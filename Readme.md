@@ -4,6 +4,7 @@ Let's build this out properly. I'll give you the folder structure, then walk thr
 
 ---
 
+
 ## 📁 Project Map (Folder Structure)
 
 ```
@@ -202,6 +203,45 @@ This "never trust client-sent prices, recompute server-side" point is important 
 - Backend confirms payment via Stripe SDK → creates Order → returns confirmation.
 - `OrderHistory.jsx`: `GET /api/orders/myorders`.
 - `ManageOrders.jsx` (admin): `GET /api/orders` (all) + `PUT /api/orders/:id/status`.
+
+---
+
+## 📡 API Endpoints Reference
+
+### 🔐 Authentication (`/api/auth`)
+| Method | Endpoint | Description | Access |
+|---|---|---|---|
+| `POST` | `/api/auth/register` | Register a new user account | Public |
+| `POST` | `/api/auth/login` | Authenticate user & issue HTTP-only JWT cookie | Public |
+| `GET` | `/api/auth/me` | Fetch currently logged-in user profile | Private (Logged-in User) |
+| `POST` | `/api/auth/logout` | Clear authentication cookie | Public |
+
+### 📦 Products (`/api/products`)
+| Method | Endpoint | Description | Access |
+|---|---|---|---|
+| `GET` | `/api/products` | Get products (supports search, category filter, pagination) | Public |
+| `GET` | `/api/products/:id` | Get single product details by ID | Public |
+| `POST` | `/api/products` | Create a new product (with multer image upload) | Private (Admin only) |
+| `PUT` | `/api/products/:id` | Update product details | Private (Admin only) |
+| `DELETE` | `/api/products/:id` | Delete product by ID | Private (Admin only) |
+
+### 🛒 Cart (`/api/cart`)
+| Method | Endpoint | Description | Access |
+|---|---|---|---|
+| `GET` | `/api/cart` | Get current user's database cart | Private (Logged-in User) |
+| `POST` | `/api/cart` | Add item to cart | Private (Logged-in User) |
+| `PUT` | `/api/cart/:itemId` | Update cart item quantity | Private (Logged-in User) |
+| `DELETE` | `/api/cart/:itemId` | Remove an item from cart | Private (Logged-in User) |
+| `POST` | `/api/cart/merge` | Merge guest localStorage cart into database cart | Private (Logged-in User) |
+
+### 💳 Orders & Checkout (`/api/orders`)
+| Method | Endpoint | Description | Access |
+|---|---|---|---|
+| `POST` | `/api/orders` | Verify cart, charge payment, and create order | Private (Logged-in User) |
+| `GET` | `/api/orders/myorders` | Fetch logged-in user's order history | Private (Logged-in User) |
+| `GET` | `/api/orders/:id` | Get single order details | Private (Logged-in User / Admin) |
+| `GET` | `/api/orders` | Fetch all orders in system | Private (Admin only) |
+| `PUT` | `/api/orders/:id/status` | Update order shipment/delivery status | Private (Admin only) |
 
 ---
 
