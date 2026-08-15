@@ -8,19 +8,13 @@ const Home = () => {
     <div className="home-container">
       <header className="navbar">
         <div className="nav-brand">
-          <h1>Vyoma</h1>
+          <h1>Vyoma -A World Of Choices</h1>
         </div>
         <nav className="nav-links">
           {user ? (
             <div className="user-profile">
-              <Link
-                to="/profile"
-                className={`user-badge ${user.role === "admin" ? "badge-admin" : "badge-customer"}`}
-                style={{ textDecoration: "none" }}
-              >
-                <span className="role-icon">{user.role === "admin" ? "👑" : "👤"}</span>
-                <span className="user-name">{user.name}</span>
-                <span className="role-tag">{user.role === "admin" ? "Admin" : "Shopper"}</span>
+              <Link to="/profile" className="user-badge" style={{ textDecoration: "none" }}>
+                👤 {user.name}
               </Link>
               <button onClick={logout} className="btn btn-secondary btn-sm">
                 Sign Out
