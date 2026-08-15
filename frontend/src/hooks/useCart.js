@@ -5,7 +5,18 @@ const useCart = () => {
   const context = useContext(CartContext);
 
   if (!context) {
-    throw new Error("useCart must be used inside CartProvider");
+    return {
+      items: [],
+      itemCount: 0,
+      subtotal: 0,
+      loading: false,
+      error: "",
+      addToCart: async () => {},
+      updateQuantity: async () => {},
+      removeItem: async () => {},
+      clearCart: async () => {},
+      refreshCart: async () => {},
+    };
   }
 
   return context;

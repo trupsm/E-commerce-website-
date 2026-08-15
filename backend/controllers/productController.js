@@ -103,17 +103,20 @@ const getProducts = async (req, res, next) => {
     }
 
     // Category
-    if (category) {
-      query.category = category;
+    if (category && typeof category === "string" && category !== "[object Object]" && category.trim() !== "") {
+      query.category = category.trim();
     }
 
     // Price range
-    if (minPrice !== undefined || maxPrice !== undefined) {
+    const hasMin = minPrice !== undefined && minPrice !== "" && !isNaN(Number(minPrice));
+    const hasMax = maxPrice !== undefined && maxPrice !== "" && !isNaN(Number(maxPrice));
+
+    if (hasMin || hasMax) {
       query.price = {};
-      if (minPrice !== undefined && minPrice !== "") {
+      if (hasMin) {
         query.price.$gte = Number(minPrice);
       }
-      if (maxPrice !== undefined && maxPrice !== "") {
+      if (hasMax) {
         query.price.$lte = Number(maxPrice);
       }
     }

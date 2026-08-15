@@ -16,15 +16,6 @@ const cookieOptions = {
 };
 
 // Register
-/*
-1. Validation: Checks if name, email, and password are provided in req.body. If missing, returns 400 Bad Request.
-2. Duplicate Check: Looks up User.findOne({ email }). If the email already exists, returns 409 Conflict.
-3. Password Hashing: Hashes the plain text password via hashPassword(password) (using bcrypt).
-4. Create User: Saves the new user into MongoDB with the hashed password.
-5. Issue Token & Cookie: Generates a JWT via generateToken(user._id) and sets it into the browser's cookie using res.cookie("token", token, cookieOptions).
-6. Response: Sends back a 201 Created status with sanitized user details (excluding the password).
-*/
-
 const register = async (req, res, next) => {
     try {
         const { name, email, password } = req.body;
@@ -41,7 +32,7 @@ const register = async (req, res, next) => {
         });
 
         if (existingUser) {
-            return res.status(409).json({ //409-Conflict - The request conflicts with the current state of the resource. 
+            return res.status(409).json({
                 success: false,
                 message: "User already exists"
             });
@@ -66,7 +57,8 @@ const register = async (req, res, next) => {
                 id: user._id,
                 name: user.name,
                 email: user.email,
-                role: user.role
+                role: user.role,
+                addresses: user.addresses || []
             }
         });
     } catch (error) {
@@ -74,17 +66,7 @@ const register = async (req, res, next) => {
     }
 };
 
-
 // Login
-/*
-1.Validation: Ensures email and password are sent.
-2.Find User: Looks up the user in MongoDB by email.
-3.Verify Password: Uses comparePassword(password, user.password) to check if the entered password matches the stored bcrypt hash.
-Security Tip: Notice both "user not found" and "password incorrect" return the generic message "Invalid email or password" with status 401. This prevents attackers from enumerating valid email addresses.
-4.Issue Token & Cookie: Creates a new JWT and sets the cookie.
-Response: Sends 200 OK with user information.
-
-*/
 const login = async (req, res, next) => {
     try {
         const { email, password } = req.body;
@@ -131,7 +113,8 @@ const login = async (req, res, next) => {
                 id: user._id,
                 name: user.name,
                 email: user.email,
-                role: user.role
+                role: user.role,
+                addresses: user.addresses || []
             }
         });
     } catch (error) {
@@ -139,21 +122,18 @@ const login = async (req, res, next) => {
     }
 };
 
-
 // Get Current User
-/*
-1.Purpose: Returns the profile of the currently logged-in user.
-2.How it works: This route is protected by authMiddleware, which previously decoded the token, fetched the user from the DB, and attached it to req.user. This function simply returns that sanitized user data to the client.
-*/
 const getMe = async (req, res, next) => {
     try {
+        const user = await User.findById(req.user._id);
         res.status(200).json({
             success: true,
             user: {
-                id: req.user._id,
-                name: req.user.name,
-                email: req.user.email,
-                role: req.user.role
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                addresses: user.addresses || []
             }
         });
     } catch (error) {
@@ -161,19 +141,189 @@ const getMe = async (req, res, next) => {
     }
 };
 
-
 // Logout
-/*
-Purpose: Clears the authentication cookie from the browser using res.clearCookie().
-After this, future requests won't have the token cookie, effectively logging the user out.
-*/
 const logout = async (req, res, next) => {
     try {
         res.clearCookie("token", cookieOptions);
-
         res.status(200).json({
             success: true,
             message: "Logout successful"
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// =====================================
+// Shipping Address Controller Functions
+// =====================================
+
+// Get User's Addresses
+const getAddresses = async (req, res, next) => {
+    try {
+        const user = await User.findById(req.user._id);
+        res.status(200).json({
+            success: true,
+            addresses: user.addresses || []
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Add New Shipping Address
+const addAddress = async (req, res, next) => {
+    try {
+        const { fullName, phone, addressLine1, addressLine2, city, state, postalCode, country, isDefault } = req.body;
+
+        if (!fullName || !phone || !addressLine1 || !city || !state || !postalCode) {
+            return res.status(400).json({
+                success: false,
+                message: "Please fill in all required address fields (fullName, phone, addressLine1, city, state, postalCode)"
+            });
+        }
+
+        const user = await User.findById(req.user._id);
+
+        const shouldBeDefault = isDefault || user.addresses.length === 0;
+
+        if (shouldBeDefault && user.addresses.length > 0) {
+            user.addresses.forEach((addr) => {
+                addr.isDefault = false;
+            });
+        }
+
+        const newAddress = {
+            fullName,
+            phone,
+            addressLine1,
+            addressLine2: addressLine2 || "",
+            city,
+            state,
+            postalCode,
+            country: country || "India",
+            isDefault: shouldBeDefault
+        };
+
+        user.addresses.push(newAddress);
+        await user.save();
+
+        res.status(201).json({
+            success: true,
+            message: "Shipping address added successfully",
+            addresses: user.addresses
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Update Shipping Address
+const updateAddress = async (req, res, next) => {
+    try {
+        const { addressId } = req.params;
+        const { fullName, phone, addressLine1, addressLine2, city, state, postalCode, country, isDefault } = req.body;
+
+        const user = await User.findById(req.user._id);
+        const address = user.addresses.id(addressId);
+
+        if (!address) {
+            return res.status(404).json({
+                success: false,
+                message: "Address not found"
+            });
+        }
+
+        if (isDefault) {
+            user.addresses.forEach((addr) => {
+                addr.isDefault = false;
+            });
+        }
+
+        if (fullName) address.fullName = fullName;
+        if (phone) address.phone = phone;
+        if (addressLine1) address.addressLine1 = addressLine1;
+        if (addressLine2 !== undefined) address.addressLine2 = addressLine2;
+        if (city) address.city = city;
+        if (state) address.state = state;
+        if (postalCode) address.postalCode = postalCode;
+        if (country) address.country = country;
+        if (isDefault !== undefined) address.isDefault = isDefault;
+
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Address updated successfully",
+            addresses: user.addresses
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Delete Shipping Address
+const deleteAddress = async (req, res, next) => {
+    try {
+        const { addressId } = req.params;
+        const user = await User.findById(req.user._id);
+
+        const address = user.addresses.id(addressId);
+        if (!address) {
+            return res.status(404).json({
+                success: false,
+                message: "Address not found"
+            });
+        }
+
+        const wasDefault = address.isDefault;
+        user.addresses.pull(addressId);
+
+        if (wasDefault && user.addresses.length > 0) {
+            user.addresses[0].isDefault = true;
+        }
+
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Address deleted successfully",
+            addresses: user.addresses
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Set Address as Default
+const setDefaultAddress = async (req, res, next) => {
+    try {
+        const { addressId } = req.params;
+        const user = await User.findById(req.user._id);
+
+        let targetFound = false;
+        user.addresses.forEach((addr) => {
+            if (addr._id.toString() === addressId) {
+                addr.isDefault = true;
+                targetFound = true;
+            } else {
+                addr.isDefault = false;
+            }
+        });
+
+        if (!targetFound) {
+            return res.status(404).json({
+                success: false,
+                message: "Address not found"
+            });
+        }
+
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Default address set successfully",
+            addresses: user.addresses
         });
     } catch (error) {
         next(error);
@@ -184,5 +334,10 @@ module.exports = {
     register,
     login,
     getMe,
-    logout
+    logout,
+    getAddresses,
+    addAddress,
+    updateAddress,
+    deleteAddress,
+    setDefaultAddress
 };

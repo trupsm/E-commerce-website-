@@ -1,11 +1,19 @@
 import axiosInstance from "./axiosInstance";
 
-// Get Products
+// Get Products (cleans empty/null params before making GET request)
 export const getProducts = async (params = {}) => {
+    const cleanParams = {};
+    Object.keys(params).forEach((key) => {
+        const val = params[key];
+        if (val !== "" && val !== null && val !== undefined) {
+            cleanParams[key] = val;
+        }
+    });
+
     const response = await axiosInstance.get(
         "/products",
         {
-            params
+            params: cleanParams
         }
     );
 

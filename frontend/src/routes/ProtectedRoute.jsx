@@ -9,7 +9,7 @@ If the user is not logged in, it redirects to the login page.
 If the user is logged in but does not have the required role, it redirects to the home page.
 Otherwise, it renders the child components.
 */
-const ProtectedRoute = ({ allowedRoles }) => {
+const ProtectedRoute = ({ children, allowedRoles }) => {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -28,7 +28,7 @@ const ProtectedRoute = ({ allowedRoles }) => {
     return <Navigate to="/" replace />;
   }
 
-  return <Outlet />;
+  return children ? children : <Outlet />;
 };
 
 export default ProtectedRoute;

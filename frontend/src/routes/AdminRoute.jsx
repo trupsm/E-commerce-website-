@@ -1,7 +1,7 @@
 import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 
-const AdminRoute = () => {
+const AdminRoute = ({ children }) => {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -20,7 +20,7 @@ const AdminRoute = () => {
     return <Navigate to="/" replace />;
   }
 
-  return <Outlet />;
+  return children ? children : <Outlet />;
 };
 
 export default AdminRoute;
