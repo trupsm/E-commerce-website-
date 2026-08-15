@@ -1,6 +1,6 @@
 # 🛒 Vyoma E-Commerce Platform — System Architecture & Implementation Blueprint
 
-An enterprise-grade, high-performance **MERN Stack (MongoDB, Express, React, Node.js)** e-commerce web application featuring role-based access control, server-side pricing validation, hybrid cart synchronization, and dynamic product catalogs.
+An enterprise-grade, high-performance **MERN Stack (MongoDB, Express, React, Node.js)** e-commerce web application featuring role-based access control, server-side pricing validation, hybrid cart synchronization, dynamic product catalogs, and **full ACID transaction guarantees** across every critical operation (order creation, payment, cancellation, and stock management).
 
 ---
 
@@ -11,67 +11,95 @@ ecommerce-platform/
 │
 ├── backend/
 │   ├── config/
-│   │   ├── db.js                 # MongoDB Atlas connection (Mongoose)
-│   │   └── env.js                # Environment variable loader & validator
+│   │   ├── db.js                     # MongoDB connection (writeConcern: majority) — 💾 Durability
+│   │   └── env.js                    # Environment variable loader & validator
 │   ├── models/
-│   │   ├── User.js               # User model with bcrypt password hashing & RBAC
-│   │   ├── Product.js            # Product catalog with full-text search indexing
-│   │   ├── Category.js           # Category hierarchy model
-│   │   ├── Cart.js               # Server-side user shopping cart
-│   │   └── Order.js              # Orders with snapshot pricing & status tracking
+│   │   ├── User.js                   # User model with addresses sub-document
+│   │   ├── Product.js                # Product catalog with pre-save stock ≥ 0 hook — ✅ Consistency
+│   │   ├── Category.js               # Category hierarchy model
+│   │   ├── Cart.js                   # Server-side user shopping cart
+│   │   └── Order.js                  # Orders with paymentResult audit trail — ✅ Consistency
 │   ├── controllers/
-│   │   ├── authController.js     # Register, Login (JWT cookie), GetMe, Logout
-│   │   ├── productController.js  # Product CRUD, pagination, multi-field filters
-│   │   ├── categoryController.js # Category CRUD
-│   │   ├── cartController.js     # Cart operations & guest-to-user sync
-│   │   └── orderController.js    # Order checkout & Stripe payment processing
+│   │   ├── authController.js         # Register, Login (JWT cookie), GetMe, Logout, Address CRUD
+│   │   ├── productController.js      # Product CRUD, pagination, multi-field filters
+│   │   ├── categoryController.js     # Category CRUD
+│   │   ├── cartController.js         # Cart operations & transactional guest merge — ⚛️ Atomicity
+│   │   └── orderController.js        # Atomic order checkout, payment & cancellation — ⚛️🔀✅ All ACID
 │   ├── routes/
-│   │   ├── authRoutes.js         # /api/auth
-│   │   ├── productRoutes.js      # /api/products
-│   │   ├── categoryRoutes.js     # /api/categories
-│   │   ├── cartRoutes.js         # /api/cart
-│   │   └── orderRoutes.js        # /api/orders
+│   │   ├── authRoutes.js             # /api/auth
+│   │   ├── productRoutes.js          # /api/products
+│   │   ├── categoryRoutes.js         # /api/categories
+│   │   ├── cartRoutes.js             # /api/cart
+│   │   └── orderRoutes.js            # /api/orders
 │   ├── middleware/
-│   │   ├── authMiddleware.js     # HTTP-only cookie + Bearer JWT verification
-│   │   ├── roleMiddleware.js     # Role-based access control (Admin vs Customer)
-│   │   ├── errorMiddleware.js    # Central error handler (CastError, Duplicate, Validation)
-│   │   └── uploadMiddleware.js   # Image upload handling
+│   │   ├── authMiddleware.js         # HTTP-only cookie + Bearer JWT verification
+│   │   ├── roleMiddleware.js         # Role-based access control (Admin vs Customer)
+│   │   └── errorMiddleware.js        # Central error handler (CastError, Duplicate, Transaction errors)
 │   ├── utils/
-│   │   ├── generateToken.js      # JWT token generator
-│   │   └── hashPassword.js       # Bcrypt hash utility
-│   ├── server.js                 # Express application entry point
+│   │   ├── calculateOrderTotals.js   # Server-side subtotal, tax & shipping calculator
+│   │   ├── generateToken.js          # JWT token generator
+│   │   ├── hashPassword.js           # Bcrypt hash & compare utility
+│   │   └── transaction.js            # Reusable withTransaction() wrapper — ⚛️🔀 Atomicity & Isolation
+│   ├── .env                          # Environment variables (not committed)
+│   ├── server.js                     # Express application entry point
 │   └── package.json
 │
 ├── frontend/
+│   ├── public/
+│   │   ├── favicon.svg               # Site favicon
+│   │   └── icons.svg                 # SVG icon sprite
 │   ├── src/
 │   │   ├── api/
-│   │   │   ├── axiosInstance.js  # Central Axios client with credentials: true
-│   │   │   ├── authApi.js        # Auth endpoints connector
-│   │   │   └── productApi.js     # Products & categories API connector
+│   │   │   ├── axiosInstance.js       # Central Axios client with credentials: true
+│   │   │   ├── authApi.js            # Auth & address endpoints connector
+│   │   │   ├── cartApi.js            # Cart CRUD & merge API connector
+│   │   │   ├── orderApi.js           # Order creation, payment & status API connector
+│   │   │   └── productApi.js         # Products & categories API connector
 │   │   ├── components/
-│   │   │   ├── common/           # Loader, Pagination
-│   │   │   └── product/          # ProductCard, ProductGrid, ProductFilter
+│   │   │   ├── cart/
+│   │   │   │   ├── CartItem.jsx      # Single cart line-item component
+│   │   │   │   └── CartSummary.jsx   # Cart totals & checkout CTA
+│   │   │   ├── common/
+│   │   │   │   ├── Loader.jsx        # Reusable loading spinner
+│   │   │   │   ├── Navbar.jsx        # Top navigation bar with cart badge
+│   │   │   │   └── Pagination.jsx    # Page navigation controls
+│   │   │   └── product/
+│   │   │       ├── ProductCard.jsx   # Product tile with image, price & add-to-cart
+│   │   │       ├── ProductFilter.jsx # Sidebar filters (category, price, search)
+│   │   │       └── ProductGrid.jsx   # Responsive product grid layout
 │   │   ├── context/
-│   │   │   └── AuthContext.jsx   # Global session state & cookie restore on mount
+│   │   │   ├── AuthContext.jsx       # Global session state & cookie restore on mount
+│   │   │   └── CartContext.jsx       # Cart state, guest/user sync & API bridge
 │   │   ├── hooks/
-│   │   │   └── useAuth.js        # Custom auth context hook
+│   │   │   ├── useAuth.js            # Custom auth context hook
+│   │   │   └── useCart.js            # Custom cart context hook
 │   │   ├── pages/
-│   │   │   ├── Home.jsx           # Clean Hero landing page with Start Shopping CTA
-│   │   │   ├── Products.jsx       # Full storefront catalog with search & filters
-│   │   │   ├── ProductDetails.jsx # Single product view with stock selector
-│   │   │   ├── Login.jsx          # User sign in
-│   │   │   ├── Register.jsx       # User registration
-│   │   │   └── Profile.jsx        # Protected profile page
+│   │   │   ├── Home.jsx              # Hero landing page with Start Shopping CTA
+│   │   │   ├── Products.jsx          # Full storefront catalog with search & filters
+│   │   │   ├── ProductDetails.jsx    # Single product view with stock selector
+│   │   │   ├── Cart.jsx              # Full cart page with item management
+│   │   │   ├── Checkout.jsx          # Address selection, payment method & order placement
+│   │   │   ├── OrderHistory.jsx      # User's past orders list
+│   │   │   ├── OrderDetails.jsx      # Single order view with pay button & status tracker
+│   │   │   ├── Profile.jsx           # User profile & shipping address management
+│   │   │   ├── Login.jsx             # User sign in
+│   │   │   └── Register.jsx          # User registration
 │   │   ├── routes/
-│   │   │   ├── ProtectedRoute.jsx # Logged-in user route guard
-│   │   │   └── AdminRoute.jsx     # Admin-only role route guard
-│   │   ├── App.jsx                # Router & AuthProvider hierarchy
-│   │   ├── index.css              # Glassmorphic dark-mode design system
-│   │   └── main.jsx               # React DOM entry
+│   │   │   ├── ProtectedRoute.jsx    # Logged-in user route guard
+│   │   │   └── AdminRoute.jsx        # Admin-only role route guard
+│   │   ├── App.jsx                   # Router & provider hierarchy
+│   │   ├── App.css                   # App-level styles
+│   │   ├── index.css                 # Glassmorphic dark-mode design system
+│   │   └── main.jsx                  # React DOM entry
+│   ├── index.html                    # Vite HTML entry
+│   ├── vite.config.js                # Vite configuration
+│   ├── eslint.config.js              # ESLint configuration
 │   └── package.json
 │
-└── Readme.md
+├── Readme.md
+└── .gitignore
 ```
+
 
 ---
 
@@ -91,7 +119,9 @@ ecommerce-platform/
 │ • Dynamic Pagination & Category Hub│ • Scalability: Stateless REST APIs │
 │ • Hybrid Cart (Guest & User Merge) │ • Reliability: Server-side pricing │
 │ • Order Checkout & Payment Gateway │   re-computation & inventory check │
-│ • Admin Management for Products/Cat│ • Speed: Parallel DB queries       │
+│ • Admin Management for Products/Cat│ • Data Integrity: ACID transactions │
+│ • Shipping Address CRUD            │   across orders, stock & payments  │
+│ • Order Status Tracking & History  │ • Speed: Parallel DB queries       │
 └────────────────────────────────────┴────────────────────────────────────┘
 ```
 
@@ -116,15 +146,22 @@ ecommerce-platform/
                 ┌────────────┴──┐        ┌──┴─────────────┐
                 ▼               ▼        ▼                ▼
          ┌─────────────┐ ┌─────────────┐ ┌──────────┐ ┌──────────┐
-         │ User / Auth │ │ Product/Cart│ │  Orders  │ │ Stripe   │
-         │ Controller  │ │ Controller  │ │Controller│ │ Payment  │
+         │ User / Auth │ │ Product/Cart│ │  Orders  │ │ Payment  │
+         │ Controller  │ │ Controller  │ │Controller│ │ Gateway  │
          └──────┬──────┘ └──────┬──────┘ └────┬─────┘ └──────────┘
                 │               │             │
                 └───────────────┼─────────────┘
                                 ▼
+                  ┌───────────────────────────┐
+                  │ ACID Transaction Layer    │
+                  │ withTransaction() utility │
+                  └─────────────┬─────────────┘
+                                ▼
                        ┌─────────────────┐
                        │ MongoDB Atlas   │
                        │ (Mongoose ODM)  │
+                       │ w:majority +    │
+                       │ journal:true    │
                        └─────────────────┘
 ```
 
@@ -138,6 +175,7 @@ ecommerce-platform/
 | **Pricing Strategy** | **Server-Side Recomputation** | Never trust client-side prices. The backend looks up prices from MongoDB at the moment of order creation. |
 | **Catalog Performance** | **`Promise.all` Parallelism** | Product fetching and total count queries run concurrently, cutting API latency in half. |
 | **Database Indexing** | **Compound & Text Indexes** | Compound indexes on `category` and `price`, plus text index on `name`, enable fast sub-millisecond filtering. |
+| **ACID Data Integrity** | **MongoDB Multi-Document Transactions** | Order creation, stock updates, cart clearing, payment marking, and cancellation stock-restore are all wrapped in `withTransaction()` sessions with `readConcern: snapshot` and `writeConcern: majority`. Prevents overselling, partial writes, and data loss on crash. |
 
 ---
 
@@ -147,9 +185,10 @@ ecommerce-platform/
 |---|---|---|---|
 | **Authentication** | User model, `authController`, JWT utils, `authMiddleware` | `Login.jsx`, `Register.jsx`, `AuthContext.jsx`, `ProtectedRoute.jsx` | Foundational |
 | **Product Catalog** | Product model, Category model, `productController`, `categoryController` | `Products.jsx`, `ProductCard`, `ProductFilter`, `ProductGrid`, `Pagination` | Auth (for admin mutations) |
-| **Shopping Cart** | Cart model, `cartController` | `CartContext`, Cart Drawer, CartItem | Auth & Product |
-| **Checkout & Payments** | Order model, `orderController`, Stripe SDK | Checkout page, Payment Form | Cart, Auth, Product |
-| **Admin Panel** | `roleMiddleware("admin")`, CRUD handlers | `AdminRoute.jsx`, `AdminDashboard` | Auth (role=admin) |
+| **Shopping Cart** | Cart model, `cartController`, `transaction.js` | `CartContext.jsx`, `Cart.jsx`, `CartItem.jsx`, `CartSummary.jsx` | Auth & Product |
+| **Checkout & Orders** | Order model, `orderController`, `transaction.js`, `calculateOrderTotals.js` | `Checkout.jsx`, `OrderHistory.jsx`, `OrderDetails.jsx` | Cart, Auth, Product |
+| **User Profile** | Address sub-document on User, `authController` (address CRUD) | `Profile.jsx` | Auth |
+| **Admin Panel** | `roleMiddleware("admin")`, CRUD handlers | `AdminRoute.jsx` | Auth (role=admin) |
 
 ---
 
@@ -162,6 +201,15 @@ ecommerce-platform/
 | `POST` | `/api/auth/login` | Authenticate user & issue HTTP-only JWT cookie | Public |
 | `GET` | `/api/auth/me` | Fetch currently logged-in user profile | Private (Logged-in User) |
 | `POST` | `/api/auth/logout` | Clear authentication cookie | Public |
+
+### 📍 Shipping Addresses (`/api/auth/addresses`)
+| Method | Endpoint | Description | Access |
+|---|---|---|---|
+| `GET` | `/api/auth/addresses` | Get all saved shipping addresses | Private (Logged-in User) |
+| `POST` | `/api/auth/addresses` | Add a new shipping address | Private (Logged-in User) |
+| `PUT` | `/api/auth/addresses/:addressId` | Update an existing address | Private (Logged-in User) |
+| `DELETE` | `/api/auth/addresses/:addressId` | Delete a shipping address | Private (Logged-in User) |
+| `PUT` | `/api/auth/addresses/:addressId/default` | Set an address as the default | Private (Logged-in User) |
 
 ### 📦 Products (`/api/products`)
 | Method | Endpoint | Description | Access |
@@ -186,18 +234,20 @@ ecommerce-platform/
 |---|---|---|---|
 | `GET` | `/api/cart` | Get current user's database cart | Private (Logged-in User) |
 | `POST` | `/api/cart` | Add item to cart | Private (Logged-in User) |
-| `PUT` | `/api/cart/:itemId` | Update cart item quantity | Private (Logged-in User) |
-| `DELETE` | `/api/cart/:itemId` | Remove an item from cart | Private (Logged-in User) |
-| `POST` | `/api/cart/merge` | Merge guest localStorage cart into database cart | Private (Logged-in User) |
+| `PUT` | `/api/cart/:productId` | Update cart item quantity | Private (Logged-in User) |
+| `DELETE` | `/api/cart/:productId` | Remove an item from cart | Private (Logged-in User) |
+| `DELETE` | `/api/cart` | Clear entire cart | Private (Logged-in User) |
+| `POST` | `/api/cart/merge` | Merge guest localStorage cart into database cart (⚛️ ACID transactional) | Private (Logged-in User) |
 
 ### 💳 Orders & Checkout (`/api/orders`)
 | Method | Endpoint | Description | Access |
 |---|---|---|---|
-| `POST` | `/api/orders` | Verify cart, charge payment, and create order | Private (Logged-in User) |
+| `POST` | `/api/orders` | Verify stock, decrement inventory, create order & clear cart (⚛️ ACID transactional) | Private (Logged-in User) |
 | `GET` | `/api/orders/myorders` | Fetch logged-in user's order history | Private (Logged-in User) |
 | `GET` | `/api/orders/:id` | Get single order details | Private (Logged-in User / Admin) |
+| `PUT` | `/api/orders/:id/pay` | Mark order as paid & store gateway confirmation (⚛️ ACID transactional) | Private (Logged-in User / Admin) |
 | `GET` | `/api/orders` | Fetch all orders in system | Private (Admin only) |
-| `PUT` | `/api/orders/:id/status` | Update order shipment/delivery status | Private (Admin only) |
+| `PUT` | `/api/orders/:id/status` | Update order status; restores stock on cancel (⚛️ ACID transactional) | Private (Admin only) |
 
 ---
 
@@ -291,6 +341,8 @@ POST /api/orders → withTransaction()
 
 ---
 
+
+## 🚀 Getting Started
 
 ### Prerequisites
 * Node.js (v18+)
