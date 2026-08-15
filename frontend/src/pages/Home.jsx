@@ -6,9 +6,12 @@ const Home = () => {
 
   return (
     <div className="home-container">
+      {/* Navbar */}
       <header className="navbar">
         <div className="nav-brand">
-          <h1>Vyoma -A World Of Choices</h1>
+          <Link to="/" style={{ textDecoration: "none" }}>
+            <h1>Vyoma - A World Of Choices</h1>
+          </Link>
         </div>
         <nav className="nav-links">
           {user ? (
@@ -33,6 +36,7 @@ const Home = () => {
         </nav>
       </header>
 
+      {/* Hero Section */}
       <main className="hero-section">
         <div className="hero-content">
           <span className="tagline">Next Generation Shopping</span>
@@ -48,14 +52,16 @@ const Home = () => {
             {user ? (
               <div className="welcome-banner">
                 <h3>Welcome back, {user.name}! 👋</h3>
-                <p style={{ marginBottom: "16px" }}>You are authenticated with <strong>{user.email}</strong></p>
-                <Link to="/profile" className="btn btn-primary btn-sm">
-                  View Protected Profile →
+                <p style={{ marginBottom: "20px" }}>
+                  You are authenticated with <strong>{user.email}</strong>
+                </p>
+                <Link to="/products" className="btn btn-primary btn-lg">
+                  Start Shopping →
                 </Link>
               </div>
             ) : (
-              <Link to="/register" className="btn btn-primary btn-lg">
-                Get Started
+              <Link to="/products" className="btn btn-primary btn-lg">
+                Start Shopping →
               </Link>
             )}
           </div>
