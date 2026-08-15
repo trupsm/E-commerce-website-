@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
+import useCart from "../../hooks/useCart";
 
 const getFallbackImage = (product) => {
   const name = (product.name || "").toLowerCase();
@@ -20,10 +22,19 @@ const getFallbackImage = (product) => {
 };
 
 const ProductCard = ({ product }) => {
+  const { addToCart } = useCart();
+  const [added, setAdded] = useState(false);
+
   const firstImage = product.images && product.images.length > 0 ? product.images[0] : null;
   const isDummyUrl = firstImage && firstImage.includes("example.com");
   
   const imageUrl = firstImage && !isDummyUrl ? firstImage : getFallbackImage(product);
+
+  const handleAdd = async () => {
+    await addToCart(product, 1);
+    setAdded(true);
+    setTimeout(() => setAdded(false), 1500);
+  };
 
   return (
     <div className="product-card">
@@ -63,13 +74,26 @@ const ProductCard = ({ product }) => {
         </div>
 
         <div className="product-footer">
-          <div className="product-price">${product.price?.toFixed(2)}</div>
-          <Link
-            to={`/products/${product._id}`}
-            className="btn btn-primary btn-sm"
-          >
-            View Details
-          </Link>
+          <div className="product-footer-top">
+            <div className="product-price">${product.price?.toFixed(2)}</div>
+          </div>
+          <div className="product-actions">
+            {product.stock > 0 && (
+              <button
+                onClick={handleAdd}
+                className={`btn btn-sm ${added ? "btn-added" : "btn-primary"}`}
+                disabled={added}
+              >
+                {added ? "✓ Added" : "Add to Cart"}
+              </button>
+            )}
+            <Link
+              to={`/products/${product._id}`}
+              className="btn btn-secondary btn-sm"
+            >
+              View Details
+            </Link>
+          </div>
         </div>
       </div>
     </div>

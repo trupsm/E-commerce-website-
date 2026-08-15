@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { getProductById } from "../api/productApi";
+import useCart from "../hooks/useCart";
 import Loader from "../components/common/Loader";
 
 const getFallbackImage = (product) => {
@@ -24,6 +25,7 @@ const getFallbackImage = (product) => {
 
 const ProductDetails = () => {
   const { id } = useParams();
+  const { addToCart } = useCart();
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -53,7 +55,8 @@ const ProductDetails = () => {
     fetchProduct();
   }, [id]);
 
-  const handleAddToCart = () => {
+  const handleAddToCart = async () => {
+    await addToCart(product, quantity);
     setAddedMessage(true);
     setTimeout(() => setAddedMessage(false), 3000);
   };
@@ -164,7 +167,8 @@ const ProductDetails = () => {
 
           {addedMessage && (
             <div className="alert alert-success" style={{ marginTop: "16px" }}>
-              ✅ Added {quantity} item(s) to your cart!
+              ✅ Added {quantity} item(s) to your cart!{" "}
+              <Link to="/cart" style={{ color: "inherit", fontWeight: 600 }}>View Cart →</Link>
             </div>
           )}
         </div>

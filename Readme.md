@@ -76,10 +76,6 @@ ecommerce-platform/
 ---
 
 ## 🧱 Layer 1 — Architecture (System Level & High-Level Design / HLD)
-
-> 🎙️ **Interview Pitch (2-Minute Elevator Pitch):**  
-> *"I built a scalable 3-tier e-commerce platform using the MERN stack. The frontend is a React Single Page Application that handles client-side state and communicates with a stateless Express.js REST API. The backend strictly follows a layered architecture (Routes → Middleware Pipeline → Controllers → Models) connected to MongoDB Atlas. For security, authentication uses JWTs transmitted via HTTP-only, SameSite cookies to eliminate XSS token theft while defending against CSRF. The checkout flow enforces server-side price re-computation and inventory checks to prevent client-side price tampering, with Stripe handling tokenized payments."*
-
 ---
 
 ### 1. System Requirements & Design Goals
@@ -102,47 +98,6 @@ ecommerce-platform/
 ---
 
 ### 2. High-Level Architecture Diagram
-
-```mermaid
-graph TD
-    Client["📱 Client: React SPA<br/>(Vite, React Router, Context API)"]
-    
-    subgraph Express_Backend ["🚀 Express.js REST API (Node.js)"]
-        direction TB
-        MW["🛡️ Middleware Pipeline<br/>(CORS, Cookie-Parser, authMiddleware, roleMiddleware)"]
-        
-        subgraph Controllers_Layer ["⚙️ Controllers & Services"]
-            AuthCtrl["Auth Controller<br/>(JWT, Bcrypt)"]
-            ProdCtrl["Product Controller<br/>(CRUD, Pagination, Search)"]
-            CatCtrl["Category Controller<br/>(Taxonomy CRUD)"]
-            CartCtrl["Cart Controller<br/>(Merge, State)"]
-            OrderCtrl["Order Controller<br/>(Pricing Engine)"]
-        end
-        
-        MW --> AuthCtrl
-        MW --> ProdCtrl
-        MW --> CatCtrl
-        MW --> CartCtrl
-        MW --> OrderCtrl
-    end
-    
-    MongoDB[("🍃 MongoDB Atlas<br/>(Users, Products, Categories, Orders)")]
-    StripeAPI["💳 Stripe API<br/>(Payment Gateway)"]
-    Cloudinary["☁️ Cloudinary / S3<br/>(Image CDN)"]
-    
-    Client -->|HTTPS / JSON with HTTP-only Cookies| MW
-    
-    AuthCtrl --> MongoDB
-    ProdCtrl --> MongoDB
-    CatCtrl --> MongoDB
-    CartCtrl --> MongoDB
-    OrderCtrl --> MongoDB
-    
-    ProdCtrl -.-> Cloudinary
-    OrderCtrl -.-> StripeAPI
-```
-
-#### ASCII System Flow
 ```
                        ┌─────────────────────────┐
                        │   Client (React SPA)    │
@@ -175,7 +130,7 @@ graph TD
 
 ---
 
-### 3. Key Engineering Trade-Offs (Interview Q&A)
+### 3. Key Engineering Trade-Offs 
 
 | Architectural Decision | Choice Made | Why? (The Engineering Rationale) |
 |---|---|---|

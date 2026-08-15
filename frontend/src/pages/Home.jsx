@@ -1,8 +1,10 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+import useCart from "../hooks/useCart";
 
 const Home = () => {
   const { user, logout } = useAuth();
+  const { itemCount } = useCart();
 
   return (
     <div className="home-container">
@@ -14,6 +16,20 @@ const Home = () => {
           </Link>
         </div>
         <nav className="nav-links">
+          <Link to="/" className="nav-item-pill active">
+            🏠 Home
+          </Link>
+          <Link to="/products" className="nav-item-pill">
+            🛍️ Shop
+          </Link>
+
+          <Link to="/cart" className="nav-item-pill cart-pill" title="Shopping Cart">
+            🛒 Cart
+            {itemCount > 0 && (
+              <span className="cart-badge-inline">{itemCount > 99 ? "99+" : itemCount}</span>
+            )}
+          </Link>
+
           {user ? (
             <div className="user-profile">
               <Link to="/profile" className="user-badge" style={{ textDecoration: "none" }}>
