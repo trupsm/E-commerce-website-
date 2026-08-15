@@ -12,17 +12,14 @@ const roleMiddleware = require("../middleware/roleMiddleware");
 
 const router = express.Router();
 
-// Require authentication for all order endpoints
-router.use(authMiddleware);
-
 // Customer endpoints
-router.post("/", createOrder);
-router.get("/myorders", getMyOrders);
-router.get("/:id", getOrderById);
-router.put("/:id/pay", updateOrderToPaid);
+router.post("/", authMiddleware, createOrder);
+router.get("/myorders", authMiddleware, getMyOrders);
+router.get("/:id", authMiddleware, getOrderById);
+router.put("/:id/pay", authMiddleware, updateOrderToPaid);
 
 // Admin-only endpoints
-router.get("/", roleMiddleware("admin"), getAllOrders);
-router.put("/:id/status", roleMiddleware("admin"), updateOrderStatus);
+router.get("/", authMiddleware, roleMiddleware("admin"), getAllOrders);
+router.put("/:id/status", authMiddleware, roleMiddleware("admin"), updateOrderStatus);
 
 module.exports = router;

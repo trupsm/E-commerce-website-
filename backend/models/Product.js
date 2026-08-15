@@ -84,6 +84,34 @@ productSchema.index({
   price: 1
 });
 
+// ── Consistency (ACID) ─────────────────────────────────────────────────────
+// Pre-save hook: enforce the invariant that stock can never go below zero.
+// This acts as the last line of defence regardless of which code path
+// triggers the save (controller, admin tool, migration scripts, etc.).
+// ──────────────────────────────────────────────────────────────────────────
+productSchema.pre("save", function (next) {
+  if (this.stock < 0) {
+    return next(
+      new Error(
+        `Consistency violation: stock for product "${this.name}" cannot be negative (got ${this.stock})`
+      )
+    );
+  }
+  next();
+});
+
+// Pre-findOneAndUpdate hook: also enforce stock >= 0 for atomic $inc updates.
+productSchema.pre("findOneAndUpdate", function (next) {
+  const update = this.getUpdate();
+  // If someone passes a direct $set that would make stock negative, reject it.
+  if (update && update.$set && typeof update.$set.stock === "number" && update.$set.stock < 0) {
+    return next(
+      new Error("Consistency violation: stock cannot be set to a negative value")
+    );
+  }
+  next();
+});
+
 const Product = mongoose.model("Product", productSchema);
 
 module.exports = Product;

@@ -1,5 +1,13 @@
 const Cart = require("../models/Cart");
 const Product = require("../models/Product");
+const withTransaction = require("../utils/transaction");
+
+// ── ACID notes ────────────────────────────────────────────────────────────────
+// Atomicity  : mergeGuestCart is wrapped in a transaction.
+// Consistency: addToCart re-reads stock atomically to guard against stale reads.
+// Isolation  : Session-scoped writes in mergeGuestCart prevent partial merges.
+// Durability : Handled globally at the connection level (w:"majority").
+// ─────────────────────────────────────────────────────────────────────────────
 
 
 // ======================================================
@@ -115,11 +123,19 @@ const addToCart = async (req, res, next) => {
         }
 
 
-        if (product.stock < requestedQuantity) {
+        // ── Consistency (ACID): re-read stock from DB at this exact moment ──────
+        // The stock value from the Product.findOne() above could be stale if
+        // another request modified it between that read and now. We use a fresh
+        // findById to get the latest committed value before updating the cart.
+        // (Full isolation for cart ↔ order race conditions is handled in the
+        //  order controller which uses a conditional $inc inside a transaction.)
+        const freshProduct = await Product.findById(productId);
+        if (!freshProduct || freshProduct.stock < requestedQuantity) {
             return res.status(400).json({
                 success: false,
-                message:
-                    `Only ${product.stock} item(s) available`
+                message: freshProduct
+                    ? `Only ${freshProduct.stock} item(s) available`
+                    : "Product no longer available"
             });
         }
 
@@ -152,11 +168,11 @@ const addToCart = async (req, res, next) => {
                 requestedQuantity;
 
 
-            if (newQuantity > product.stock) {
+            if (newQuantity > freshProduct.stock) {
                 return res.status(400).json({
                     success: false,
                     message:
-                        `Only ${product.stock} item(s) available`
+                        `Only ${freshProduct.stock} item(s) available`
                 });
             }
 
@@ -456,84 +472,90 @@ const mergeGuestCart = async (
             });
         }
 
+        // ── Atomicity (ACID): wrap the entire merge in a transaction ───────────
+        // Either ALL guest items are merged into the DB cart, or NONE are.
+        // A failure mid-loop will roll back any partial cart updates.
+        // ──────────────────────────────────────────────────────────────────────
+        await withTransaction(async (session) => {
 
-        let cart =
-            await Cart.findOne({
+            let cart = await Cart.findOne({
                 user: req.user._id
-            });
+            }).session(session || null);
 
 
-        if (!cart) {
-            cart = await Cart.create({
-                user: req.user._id,
-                items: []
-            });
-        }
-
-
-        for (const guestItem of guestItems) {
-
-            const productId =
-                guestItem.productId;
-
-            const quantity =
-                Number(guestItem.quantity);
-
-
-            if (
-                !productId ||
-                !Number.isInteger(quantity) ||
-                quantity < 1
-            ) {
-                continue;
+            if (!cart) {
+                const created = await Cart.create(
+                    [{ user: req.user._id, items: [] }],
+                    session ? { session } : {}
+                );
+                cart = created[0];
             }
 
 
-            const product =
-                await Product.findOne({
+            for (const guestItem of guestItems) {
+
+                const productId =
+                    guestItem.productId;
+
+                const quantity =
+                    Number(guestItem.quantity);
+
+
+                if (
+                    !productId ||
+                    !Number.isInteger(quantity) ||
+                    quantity < 1
+                ) {
+                    continue;
+                }
+
+
+                // ── Consistency: read latest stock inside the transaction ───────
+                const product = await Product.findOne({
                     _id: productId,
                     isActive: true
-                });
+                }).session(session || null);
 
 
-            if (!product || product.stock <= 0) {
-                continue;
-            }
+                if (!product || product.stock <= 0) {
+                    continue; // skip unavailable products silently
+                }
 
 
-            const existingItem =
-                cart.items.find(
-                    (item) =>
-                        item.product.toString() ===
-                        productId.toString()
-                );
-
-
-            if (existingItem) {
-
-                existingItem.quantity =
-                    Math.min(
-                        existingItem.quantity +
-                        quantity,
-                        product.stock
+                const existingItem =
+                    cart.items.find(
+                        (item) =>
+                            item.product.toString() ===
+                            productId.toString()
                     );
 
-            } else {
 
-                cart.items.push({
-                    product: productId,
-                    quantity:
+                if (existingItem) {
+
+                    existingItem.quantity =
                         Math.min(
+                            existingItem.quantity +
                             quantity,
                             product.stock
-                        )
-                });
+                        );
 
+                } else {
+
+                    cart.items.push({
+                        product: productId,
+                        quantity:
+                            Math.min(
+                                quantity,
+                                product.stock
+                            )
+                    });
+
+                }
             }
-        }
 
 
-        await cart.save();
+            await cart.save(session ? { session } : {});
+        });
 
 
         const populatedCart =

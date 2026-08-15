@@ -3,7 +3,7 @@ const errorMiddleware = (err, req, res, next) => {
   error.message = err.message;
 
   // Log error stack for debugging
-  console.error("❌ Error:", err.message);
+  console.error("Error:", err.message);
 
   // 1. Mongoose Bad ObjectId (CastError)
   if (err.name === "CastError") {
@@ -32,6 +32,31 @@ const errorMiddleware = (err, req, res, next) => {
     return res.status(400).json({
       success: false,
       message
+    });
+  }
+
+  // ── ACID: Transaction-specific MongoDB errors ────────────────────────────
+  // Code 112 → WriteConflict: two concurrent transactions tried to modify
+  //   the same document. One wins; the other gets this error.
+  // Code 251 → NoSuchTransaction: the session's transaction was already
+  //   aborted or committed before this operation ran.
+  // Code 11600 → InterruptedAtShutdown: server restarted mid-transaction.
+  // In all cases we surface a 409 Conflict so the client can retry.
+  // ─────────────────────────────────────────────────────────────────────────
+  if (err.code === 112 || err.code === 251 || err.code === 11600) {
+    return res.status(409).json({
+      success: false,
+      message:
+        "A concurrent request caused a conflict. Please retry your request.",
+      errorCode: err.code
+    });
+  }
+
+  // Code 91 → ShutdownInProgress: server is shutting down.
+  if (err.code === 91) {
+    return res.status(503).json({
+      success: false,
+      message: "Service temporarily unavailable. Please retry shortly."
     });
   }
 

@@ -11,6 +11,7 @@ const OrderDetails = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState("");
 
   const fetchOrder = async () => {
     try {
@@ -42,12 +43,29 @@ const OrderDetails = () => {
   const handlePayNow = async () => {
     try {
       setPaying(true);
-      const res = await updateOrderToPaid(id, { status: "COMPLETED" });
+      setPayError("");
+      // ── Consistency (ACID): send paymentResult data matching the backend schema.
+      // gatewayTransactionId, status, email are stored in the Order's paymentResult
+      // sub-document as an audit trail. In a real integration, these come from
+      // the payment gateway SDK (Stripe.js / PayPal SDK) after the user pays.
+      // Here we send a stub confirming manual payment for demonstration.
+      const res = await updateOrderToPaid(id, {
+        gatewayTransactionId: `MANUAL-${Date.now()}`,
+        status: "COMPLETED",
+        email: "",
+        updatedAt: new Date().toISOString(),
+      });
       if (res.success) {
         await fetchOrder();
+      } else {
+        setPayError(res.message || "Failed to process payment. Please try again.");
       }
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to process payment");
+      setPayError(
+        err.response?.data?.message ||
+        err.message ||
+        "Failed to process payment. Please try again."
+      );
     } finally {
       setPaying(false);
     }
@@ -208,10 +226,17 @@ const OrderDetails = () => {
 
           {/* Action Button if Payment Pending */}
           {order.paymentStatus === "pending" && order.paymentMethod !== "COD" && !isCancelled && (
-            <div style={{ marginTop: "16px", paddingTop: "16px", borderTop: "1px solid var(--border-color)", display: "flex", justifyContent: "flex-end" }}>
-              <button onClick={handlePayNow} disabled={paying} className="btn btn-primary" style={{ padding: "12px 24px" }}>
-                {paying ? "Processing..." : "Complete Payment Now 💳"}
-              </button>
+            <div style={{ marginTop: "16px", paddingTop: "16px", borderTop: "1px solid var(--border-color)" }}>
+              {payError && (
+                <div className="alert alert-error" style={{ marginBottom: "12px", fontSize: "0.9rem" }}>
+                  ⚠️ {payError}
+                </div>
+              )}
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button onClick={handlePayNow} disabled={paying} className="btn btn-primary" style={{ padding: "12px 24px" }}>
+                  {paying ? "Processing..." : "Complete Payment Now 💳"}
+                </button>
+              </div>
             </div>
           )}
 

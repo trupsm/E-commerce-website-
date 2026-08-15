@@ -10,12 +10,16 @@ const PLACEHOLDER_IMAGE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/20
 
 const Checkout = () => {
   const navigate = useNavigate();
-  const { items, subtotal, clearCart } = useCart();
+  const { items, subtotal, clearCart, refreshCart } = useCart();
   const { user } = useAuth();
 
-  const TAX_RATE = 0.18;
-  const SHIPPING_THRESHOLD = 999;
-  const shippingCost = subtotal >= SHIPPING_THRESHOLD || subtotal === 0 ? 0 : 79;
+  // ── Consistency (ACID): these constants MUST match backend/utils/calculateOrderTotals.js
+  // The backend is the authoritative source of truth for totals. If these diverge,
+  // the user sees a different price than what gets stored in the database.
+  const TAX_RATE = 0.18;               // must match TAX_RATE in calculateOrderTotals.js
+  const SHIPPING_THRESHOLD = 1000;     // must match FREE_SHIPPING_THRESHOLD (was 999 — fixed)
+  const SHIPPING_COST = 100;           // must match STANDARD_SHIPPING_COST (was 79 — fixed)
+  const shippingCost = subtotal >= SHIPPING_THRESHOLD || subtotal === 0 ? 0 : SHIPPING_COST;
   const tax = parseFloat((subtotal * TAX_RATE).toFixed(2));
   const total = subtotal + tax + shippingCost;
 
@@ -161,7 +165,14 @@ const Checkout = () => {
 
       if (res.success && res.order) {
         setOrderSuccess(res.order);
-        await clearCart();
+        // ── Atomicity (ACID): do NOT call clearCart() here.
+        // The backend already cleared the DB cart atomically inside its
+        // transaction (alongside the order save and stock decrement).
+        // Calling clearCart() again would trigger a duplicate API write
+        // that is outside the transaction scope and would fail silently
+        // if the cart was already empty, leaving the UI in a stale state.
+        // Instead, refresh local cart state from the now-empty DB cart.
+        if (refreshCart) await refreshCart();
       } else {
         setError(res.message || "Failed to place order. Please try again.");
       }
