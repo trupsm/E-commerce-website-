@@ -1,3 +1,4 @@
+
 const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
@@ -12,10 +13,15 @@ const categoryRoutes = require("./routes/categoryRoutes");
 
 const cartRoutes = require("./routes/cartRoutes");
 const orderRoutes = require("./routes/orderRoutes");
+
+const paymentRoutes = require("./routes/paymentRoutes");
 const app = express();
 
 // Database
 connectDB();
+
+// Stripe Webhook Route (MUST be before express.json() for raw body verification)
+app.use("/api/payments", paymentRoutes);
 
 // Global Middleware
 app.use(express.json());

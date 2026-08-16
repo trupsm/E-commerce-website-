@@ -4,7 +4,7 @@ const Product = require("../models/Product");
 const Cart = require("../models/Cart");
 const calculateOrderTotals = require("../utils/calculateOrderTotals");
 const withTransaction = require("../utils/transaction");
-
+const paymentService = require("../services/paymentService");
 // =============================================
 // @desc    Create new order
 // @route   POST /api/orders
@@ -473,6 +473,251 @@ const updateOrderToPaid = async (req, res) => {
   }
 };
 
+// ======================================================
+// Create Stripe Payment Intent
+// POST /api/orders/payment-intent
+// Protected
+// ======================================================
+
+const createStripePaymentIntent = async (
+  req,
+  res,
+  next
+) => {
+
+  try {
+
+    const {
+      shippingAddress
+    } = req.body;
+
+
+    // ==========================================
+    // Validate address
+    // ==========================================
+
+    if (
+      !shippingAddress ||
+      !shippingAddress.fullName ||
+      !shippingAddress.phone ||
+      !shippingAddress.addressLine1 ||
+      !shippingAddress.city ||
+      !shippingAddress.state ||
+      !shippingAddress.postalCode
+    ) {
+
+      return res.status(400).json({
+        success: false,
+        message:
+          "Complete shipping address is required"
+      });
+
+    }
+
+
+    // ==========================================
+    // Get Cart
+    // ==========================================
+
+    const cart =
+      await Cart.findOne({
+        user: req.user._id
+      });
+
+
+    if (
+      !cart ||
+      cart.items.length === 0
+    ) {
+
+      return res.status(400).json({
+        success: false,
+        message:
+          "Your cart is empty"
+      });
+
+    }
+
+
+    // ==========================================
+    // Get Current Products
+    // ==========================================
+
+    const productIds =
+      cart.items.map(
+        item => item.product
+      );
+
+
+    const products =
+      await Product.find({
+        _id: {
+          $in: productIds
+        },
+        isActive: true
+      });
+
+
+    const productMap =
+      new Map(
+        products.map(
+          product => [
+            product._id.toString(),
+            product
+          ]
+        )
+      );
+
+
+    const orderItems = [];
+
+
+    // ==========================================
+    // Validate Products + Stock
+    // ==========================================
+
+    for (
+      const cartItem of cart.items
+    ) {
+
+      const product =
+        productMap.get(
+          cartItem.product.toString()
+        );
+
+
+      if (!product) {
+
+        return res.status(400).json({
+          success: false,
+          message:
+            "One or more products are unavailable"
+        });
+
+      }
+
+
+      if (
+        product.stock <
+        cartItem.quantity
+      ) {
+
+        return res.status(400).json({
+          success: false,
+          message:
+            `${product.name} has only ${product.stock} item(s) available`
+        });
+
+      }
+
+
+      orderItems.push({
+        product: product._id,
+        name: product.name,
+        image:
+          product.images?.[0] || "",
+        price: product.price,
+        quantity: cartItem.quantity
+      });
+
+    }
+
+
+    // ==========================================
+    // Calculate Server-Side Totals
+    // ==========================================
+
+    const totals =
+      calculateOrderTotals(
+        orderItems
+      );
+
+
+    // ==========================================
+    // Convert INR → Paise
+    // ==========================================
+
+    const amountInPaise =
+      Math.round(
+        totals.total * 100
+      );
+
+
+    // ==========================================
+    // Create Pending Order
+    // ==========================================
+
+    const order =
+      await Order.create({
+        user: req.user._id,
+
+        items: orderItems,
+
+        shippingAddress,
+
+        paymentMethod: "STRIPE",
+
+        paymentStatus: "pending",
+
+        orderStatus: "processing",
+
+        subtotal:
+          totals.subtotal,
+
+        tax:
+          totals.tax,
+
+        shippingCost:
+          totals.shippingCost,
+
+        total:
+          totals.total
+      });
+
+
+    // ==========================================
+    // Create Stripe PaymentIntent
+    // ==========================================
+
+    const paymentIntent =
+      await paymentService.createPaymentIntent({
+        amount: amountInPaise,
+        currency: "inr",
+        orderId: order._id,
+        userId: req.user._id
+      });
+
+
+    // ==========================================
+    // Save Stripe PaymentIntent ID
+    // ==========================================
+
+    order.stripePaymentIntentId =
+      paymentIntent.id;
+
+    await order.save();
+
+
+    // ==========================================
+    // Return Client Secret
+    // ==========================================
+
+    res.status(201).json({
+      success: true,
+
+      orderId: order._id,
+
+      clientSecret:
+        paymentIntent.client_secret
+    });
+
+  } catch (error) {
+
+    next(error);
+
+  }
+};
+
 module.exports = {
   createOrder,
   getMyOrders,
@@ -480,4 +725,5 @@ module.exports = {
   getAllOrders,
   updateOrderStatus,
   updateOrderToPaid,
+  createStripePaymentIntent,
 };
