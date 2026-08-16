@@ -1,373 +1,344 @@
-# 🛒 Vyoma E-Commerce Platform — System Architecture & Implementation Blueprint
+# 🛒 Vyoma — Enterprise MERN E-Commerce Platform
 
-An enterprise-grade, high-performance **MERN Stack (MongoDB, Express, React, Node.js)** e-commerce web application featuring role-based access control, server-side pricing validation, hybrid cart synchronization, dynamic product catalogs, and **full ACID transaction guarantees** across every critical operation (order creation, payment, cancellation, and stock management).
+[![Node.js](https://img.shields.io/badge/Node.js-v18+-68a063?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Express.js](https://img.shields.io/badge/Express.js-5.x-000000?style=for-the-badge&logo=express&logoColor=white)](https://expressjs.com/)
+[![React](https://img.shields.io/badge/React-19.x-61dafb?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/Vite-8.x-646cff?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Atlas%20%2F%20Mongoose-47a248?style=for-the-badge&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
+[![Stripe](https://img.shields.io/badge/Stripe-Payments-635bff?style=for-the-badge&logo=stripe&logoColor=white)](https://stripe.com/)
+[![License](https://img.shields.io/badge/License-ISC-blue.style=for-the-badge)](LICENSE)
+
+An enterprise-grade, high-performance **MERN Stack (MongoDB, Express, React, Node.js)** e-commerce web platform engineered for scalability, transactional integrity, and smooth user experience. Featuring strict **ACID-compliant transactions**, **HTTP-Only JWT authentication**, **Stripe payment integration**, **hybrid cart synchronization**, and a **glassmorphic responsive UI**.
 
 ---
 
-## 📁 Project Map (Folder Structure)
+## 📑 Table of Contents
+
+- [Key Highlights](#-key-highlights)
+- [System Architecture](#-system-architecture)
+- [Folder Structure](#-folder-structure)
+- [Core Features & Modules](#-core-features--modules)
+- [ACID Properties & Data Integrity](#-acid-properties--data-integrity)
+- [REST API Reference](#-rest-api-reference)
+- [Frontend Pages & Routing](#-frontend-pages--routing)
+- [Environment Variables](#-environment-variables)
+- [Getting Started](#-getting-started)
+- [Security & Engineering Best Practices](#-security--engineering-best-practices)
+
+---
+
+## ⚡ Key Highlights
+
+* **🔒 Enterprise-Grade Security**: Secure JWT authentication stored in `HTTP-Only SameSite` cookies, preventing XSS and CSRF token theft.
+* **🛡️ Strict ACID Compliance**: Multi-document MongoDB transactions for order placement, stock decrementing, and cart clearing.
+* **⚡ Concurrency & Race-Condition Safe**: Atomic conditional stock updates (`$gte: qty`) to eliminate overselling under heavy load.
+* **💳 Complete Stripe Payment Lifecycle**: Integrated Stripe Elements on client, Payment Intent lifecycle, and raw-body Webhook verification.
+* **🔄 Hybrid Cart Synchronization**: Smooth cart experience for guest users with automatic synchronization and merging into the database upon login.
+* **🔍 Optimized Product Discovery**: Full-text search, multi-criteria filtering (category, price range), sorting, and server-side pagination with compound indexes.
+* **🎨 Modern Glassmorphic UI**: Built with React 19, Vite, and custom CSS design system tailored for sleek dark-mode aesthetics and fluid micro-interactions.
+
+---
+
+## 🏛️ System Architecture
 
 ```
-ecommerce-platform/
-│
+                                  ┌──────────────────────────┐
+                                  │   Client (React 19 SPA)  │
+                                  │  Vite + React Router v7  │
+                                  │  Stripe React Elements   │
+                                  └────────────┬─────────────┘
+                                               │ HTTPS (JSON / REST API)
+                                               │ (Credentials: include)
+                                               ▼
+                                  ┌──────────────────────────┐
+                                  │  Express API (Node.js)   │
+                                  │  • Cookie Parser & CORS  │
+                                  │  • JWT Auth Middleware   │
+                                  │  • RBAC Access Control   │
+                                  │  • Central Error Handler │
+                                  └─────┬──────────────┬─────┘
+                                        │              │
+                    ┌───────────────────┴──┐        ┌──┴──────────────────┐
+                    ▼                      ▼        ▼                     ▼
+             ┌─────────────┐        ┌─────────────┐ ┌──────────┐   ┌──────────────┐
+             │ Auth & User │        │ Product/Cat │ │  Order   │   │    Stripe    │
+             │ Controller  │        │ Controller  │ │Controller│   │Payment Engine│
+             └──────┬──────┘        └──────┬──────┘ └────┬─────┘   └──────┬───────┘
+                    │                      │             │                │
+                    └──────────────────────┼─────────────┘                │
+                                           ▼                              ▼
+                                 ┌──────────────────┐             ┌───────────────┐
+                                 │  MongoDB Atlas   │             │ Stripe Webhook│
+                                 │  (Mongoose ODM)  │◄────────────┤  Verification │
+                                 │ Snapshot Session │             └───────────────┘
+                                 └──────────────────┘
+```
+
+---
+
+## 📁 Folder Structure
+
+```
+e-commerce/
 ├── backend/
 │   ├── config/
-│   │   ├── db.js                     # MongoDB connection (writeConcern: majority) — 💾 Durability
-│   │   └── env.js                    # Environment variable loader & validator
-│   ├── models/
-│   │   ├── User.js                   # User model with addresses sub-document
-│   │   ├── Product.js                # Product catalog with pre-save stock ≥ 0 hook — ✅ Consistency
-│   │   ├── Category.js               # Category hierarchy model
-│   │   ├── Cart.js                   # Server-side user shopping cart
-│   │   └── Order.js                  # Orders with paymentResult audit trail — ✅ Consistency
+│   │   ├── db.js                 # MongoDB connection with majority write concern
+│   │   └── env.js                # Strict environment variable validation
 │   ├── controllers/
-│   │   ├── authController.js         # Register, Login (JWT cookie), GetMe, Logout, Address CRUD
-│   │   ├── productController.js      # Product CRUD, pagination, multi-field filters
-│   │   ├── categoryController.js     # Category CRUD
-│   │   ├── cartController.js         # Cart operations & transactional guest merge — ⚛️ Atomicity
-│   │   └── orderController.js        # Atomic order checkout, payment & cancellation — ⚛️🔀✅ All ACID
-│   ├── routes/
-│   │   ├── authRoutes.js             # /api/auth
-│   │   ├── productRoutes.js          # /api/products
-│   │   ├── categoryRoutes.js         # /api/categories
-│   │   ├── cartRoutes.js             # /api/cart
-│   │   └── orderRoutes.js            # /api/orders
+│   │   ├── authController.js     # Register, Login (JWT cookie), GetMe, Logout
+│   │   ├── cartController.js     # Cart CRUD & transactional guest cart merge
+│   │   ├── categoryController.js # Category management
+│   │   ├── orderController.js    # ACID Order checkout, history, cancellation
+│   │   ├── paymentController.js  # Stripe PaymentIntents & webhook handlers
+│   │   └── productController.js  # Product search, filter, pagination & CRUD
 │   ├── middleware/
-│   │   ├── authMiddleware.js         # HTTP-only cookie + Bearer JWT verification
-│   │   ├── roleMiddleware.js         # Role-based access control (Admin vs Customer)
-│   │   └── errorMiddleware.js        # Central error handler (CastError, Duplicate, Transaction errors)
+│   │   ├── authMiddleware.js     # Cookie / Bearer token extraction & verification
+│   │   ├── errorMiddleware.js    # Centralized error handler (CastError, Duplicate, 409 Conflict)
+│   │   ├── roleMiddleware.js     # Role-based access control (Admin / Customer)
+│   │   └── uploadMiddleware.js   # Multipart form / Image upload handling
+│   ├── models/
+│   │   ├── Cart.js               # User cart schema with embedded items
+│   │   ├── Category.js           # Category taxonomy schema
+│   │   ├── Order.js              # Orders with item snapshot pricing & payment audit trail
+│   │   ├── Product.js            # Products with text indexing & stock invariant hooks
+│   │   └── User.js               # Users with bcrypt password hashing & RBAC roles
+│   ├── routes/
+│   │   ├── authRoutes.js         # /api/auth
+│   │   ├── cartRoutes.js         # /api/cart
+│   │   ├── categoryRoutes.js     # /api/categories
+│   │   ├── orderRoutes.js        # /api/orders
+│   │   ├── paymentRoutes.js      # /api/payments (Stripe webhooks & intents)
+│   │   └── productRoutes.js      # /api/products
+│   ├── services/
+│   │   └── paymentService.js     # Stripe API integration service
 │   ├── utils/
-│   │   ├── calculateOrderTotals.js   # Server-side subtotal, tax & shipping calculator
-│   │   ├── generateToken.js          # JWT token generator
-│   │   ├── hashPassword.js           # Bcrypt hash & compare utility
-│   │   └── transaction.js            # Reusable withTransaction() wrapper — ⚛️🔀 Atomicity & Isolation
-│   ├── .env                          # Environment variables (not committed)
-│   ├── server.js                     # Express application entry point
+│   │   ├── calculateOrderTotals.js # Server-side pricing, tax & shipping computation
+│   │   ├── generateToken.js      # Signed JWT generator
+│   │   ├── hashPassword.js       # Bcrypt salt and hash utilities
+│   │   └── transaction.js        # Reusable MongoDB transaction lifecycle wrapper
+│   ├── server.js                 # Express application entry point
 │   └── package.json
 │
 ├── frontend/
-│   ├── public/
-│   │   ├── favicon.svg               # Site favicon
-│   │   └── icons.svg                 # SVG icon sprite
 │   ├── src/
 │   │   ├── api/
-│   │   │   ├── axiosInstance.js       # Central Axios client with credentials: true
-│   │   │   ├── authApi.js            # Auth & address endpoints connector
-│   │   │   ├── cartApi.js            # Cart CRUD & merge API connector
-│   │   │   ├── orderApi.js           # Order creation, payment & status API connector
-│   │   │   └── productApi.js         # Products & categories API connector
+│   │   │   ├── axiosInstance.js  # Configured Axios instance with credentials
+│   │   │   ├── authApi.js        # Authentication API connector
+│   │   │   ├── cartApi.js        # Shopping cart API connector
+│   │   │   ├── orderApi.js       # Orders & payment endpoints
+│   │   │   └── productApi.js     # Catalog search & categories connector
 │   │   ├── components/
-│   │   │   ├── cart/
-│   │   │   │   ├── CartItem.jsx      # Single cart line-item component
-│   │   │   │   └── CartSummary.jsx   # Cart totals & checkout CTA
-│   │   │   ├── common/
-│   │   │   │   ├── Loader.jsx        # Reusable loading spinner
-│   │   │   │   ├── Navbar.jsx        # Top navigation bar with cart badge
-│   │   │   │   └── Pagination.jsx    # Page navigation controls
-│   │   │   └── product/
-│   │   │       ├── ProductCard.jsx   # Product tile with image, price & add-to-cart
-│   │   │       ├── ProductFilter.jsx # Sidebar filters (category, price, search)
-│   │   │       └── ProductGrid.jsx   # Responsive product grid layout
+│   │   │   ├── cart/             # Cart item rows, quantity selectors, summaries
+│   │   │   ├── common/           # Loaders, Modals, Navbar, Footer, Pagination
+│   │   │   ├── payment/          # Stripe Card Elements, Payment buttons
+│   │   │   └── product/          # ProductCard, ProductGrid, ProductFilters
 │   │   ├── context/
-│   │   │   ├── AuthContext.jsx       # Global session state & cookie restore on mount
-│   │   │   └── CartContext.jsx       # Cart state, guest/user sync & API bridge
+│   │   │   ├── AuthContext.jsx   # Global user session & cookie verification
+│   │   │   └── CartContext.jsx   # Global cart state & local/server sync engine
 │   │   ├── hooks/
-│   │   │   ├── useAuth.js            # Custom auth context hook
-│   │   │   └── useCart.js            # Custom cart context hook
+│   │   │   ├── useAuth.js        # Custom authentication hook
+│   │   │   └── useCart.js        # Custom shopping cart hook
 │   │   ├── pages/
-│   │   │   ├── Home.jsx              # Hero landing page with Start Shopping CTA
-│   │   │   ├── Products.jsx          # Full storefront catalog with search & filters
-│   │   │   ├── ProductDetails.jsx    # Single product view with stock selector
-│   │   │   ├── Cart.jsx              # Full cart page with item management
-│   │   │   ├── Checkout.jsx          # Address selection, payment method & order placement
-│   │   │   ├── OrderHistory.jsx      # User's past orders list
-│   │   │   ├── OrderDetails.jsx      # Single order view with pay button & status tracker
-│   │   │   ├── Profile.jsx           # User profile & shipping address management
-│   │   │   ├── Login.jsx             # User sign in
-│   │   │   └── Register.jsx          # User registration
+│   │   │   ├── Cart.jsx          # Shopping cart overview & quantity editor
+│   │   │   ├── Checkout.jsx      # Multi-step checkout with Stripe Elements
+│   │   │   ├── Home.jsx          # Hero storefront landing page
+│   │   │   ├── Login.jsx         # User authentication form
+│   │   │   ├── OrderDetails.jsx  # Order tracking, payment status & receipts
+│   │   │   ├── OrderHistory.jsx  # Historical purchases list
+│   │   │   ├── ProductDetails.jsx# Single product deep-dive with stock indicators
+│   │   │   ├── Products.jsx      # Filterable & searchable product catalog
+│   │   │   ├── Profile.jsx       # User account details & settings
+│   │   │   └── Register.jsx      # User registration form
 │   │   ├── routes/
-│   │   │   ├── ProtectedRoute.jsx    # Logged-in user route guard
-│   │   │   └── AdminRoute.jsx        # Admin-only role route guard
-│   │   ├── App.jsx                   # Router & provider hierarchy
-│   │   ├── App.css                   # App-level styles
-│   │   ├── index.css                 # Glassmorphic dark-mode design system
-│   │   └── main.jsx                  # React DOM entry
-│   ├── index.html                    # Vite HTML entry
-│   ├── vite.config.js                # Vite configuration
-│   ├── eslint.config.js              # ESLint configuration
+│   │   │   ├── AdminRoute.jsx    # Guarded route requiring Admin privilege
+│   │   │   └── ProtectedRoute.jsx# Guarded route requiring active authentication
+│   │   ├── App.jsx               # Application routes & provider layout
+│   │   ├── index.css             # Glassmorphic dark theme CSS design system
+│   │   └── main.jsx              # React DOM entry point
+│   ├── index.html
+│   ├── vite.config.js
 │   └── package.json
 │
-├── Readme.md
-└── .gitignore
-```
-
-
----
-
-## 🧱 Layer 1 — Architecture (System Level & High-Level Design / HLD)
----
-
-### 1. System Requirements & Design Goals
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        REQUIREMENTS BREAKDOWN                           │
-├────────────────────────────────────┬────────────────────────────────────┤
-│ 🎯 Functional Requirements         │ ⚡ Non-Functional Requirements     │
-├────────────────────────────────────┼────────────────────────────────────┤
-│ • Secure Auth (Customer & Admin)   │ • Security: XSS & CSRF mitigation  │
-│ • Catalog Search, Filter & Sort    │   via HTTP-only SameSite cookies   │
-│ • Dynamic Pagination & Category Hub│ • Scalability: Stateless REST APIs │
-│ • Hybrid Cart (Guest & User Merge) │ • Reliability: Server-side pricing │
-│ • Order Checkout & Payment Gateway │   re-computation & inventory check │
-│ • Admin Management for Products/Cat│ • Data Integrity: ACID transactions │
-│ • Shipping Address CRUD            │   across orders, stock & payments  │
-│ • Order Status Tracking & History  │ • Speed: Parallel DB queries       │
-└────────────────────────────────────┴────────────────────────────────────┘
+└── Readme.md
 ```
 
 ---
 
-### 2. High-Level Architecture Diagram
-```
-                       ┌─────────────────────────┐
-                       │   Client (React SPA)    │
-                       │ Vite + React Router DOM │
-                       └────────────┬────────────┘
-                                    │ HTTPS (JSON / REST API)
-                                    ▼
-                       ┌─────────────────────────┐
-                       │  Express API (Node.js)  │
-                       │  • Cookie Parser & CORS │
-                       │  • JWT Auth Middleware  │
-                       │  • RBAC (Role) Check    │
-                       │  • Central Error Filter │
-                       └─────┬──────────────┬────┘
-                             │              │
-                ┌────────────┴──┐        ┌──┴─────────────┐
-                ▼               ▼        ▼                ▼
-         ┌─────────────┐ ┌─────────────┐ ┌──────────┐ ┌──────────┐
-         │ User / Auth │ │ Product/Cart│ │  Orders  │ │ Payment  │
-         │ Controller  │ │ Controller  │ │Controller│ │ Gateway  │
-         └──────┬──────┘ └──────┬──────┘ └────┬─────┘ └──────────┘
-                │               │             │
-                └───────────────┼─────────────┘
-                                ▼
-                  ┌───────────────────────────┐
-                  │ ACID Transaction Layer    │
-                  │ withTransaction() utility │
-                  └─────────────┬─────────────┘
-                                ▼
-                       ┌─────────────────┐
-                       │ MongoDB Atlas   │
-                       │ (Mongoose ODM)  │
-                       │ w:majority +    │
-                       │ journal:true    │
-                       └─────────────────┘
-```
+## 🧩 Core Features & Modules
+
+### 1. 🔐 Authentication & Role-Based Access Control
+* **JWT in HTTP-Only Cookies**: Tokens are never stored in `localStorage` or `sessionStorage`, making them immune to client-side XSS attacks.
+* **Role Verification**: Clear separation between `customer` and `admin` roles, enforced by backend middleware (`roleMiddleware.js`) and frontend route guards (`AdminRoute.jsx`).
+* **Session Persistence**: React context restores session on refresh through the `/api/auth/me` endpoint.
+
+### 2. 📦 Product Catalog & Dynamic Filtering
+* **Full-Text Search & Multi-Filters**: Filter products concurrently by text keyword, category, price boundaries, and sort orders (newest, price asc/desc).
+* **Parallel Query Execution**: Uses `Promise.all()` to execute catalog retrieval and count queries concurrently, halving response latency.
+* **Stock Accuracy**: Real-time stock status shown dynamically on product pages.
+
+### 3. 🛒 Hybrid Shopping Cart
+* **Dual Persistence**: Guests can browse and add items to a local storage cart; upon logging in, the cart automatically triggers `/api/cart/merge` to sync items with their database cart.
+* **Atomic Item Updates**: Quantities, stock bounds, and item deletions synchronize immediately with server-side validation.
+
+### 4. 💳 Checkout & Stripe Integration
+* **Server-Side Pricing Engine**: Client pricing is never trusted. Subtotals, shipping fees, taxes, and total costs are computed directly from database product prices via `calculateOrderTotals.js`.
+* **Stripe Elements & Payment Intents**: Seamless, PCI-compliant card processing using Stripe React Elements and backend Payment Intent creation.
+* **Webhook Auditing**: Secure webhook listener with raw request body verification to handle asynchronous payment confirmations.
 
 ---
 
-### 3. Key Engineering Trade-Offs 
+## 🔒 ACID Properties & Data Integrity
 
-| Architectural Decision | Choice Made | Why? (The Engineering Rationale) |
+The backend is architected with strict adherence to the four **ACID** database properties:
+
+| Property | Problem Solved | Implementation Details |
 |---|---|---|
-| **JWT Storage** | **HTTP-Only Cookies** | Storing JWTs in `localStorage` exposes tokens to Cross-Site Scripting (XSS). HTTP-only cookies prevent JavaScript from accessing tokens. |
-| **Pricing Strategy** | **Server-Side Recomputation** | Never trust client-side prices. The backend looks up prices from MongoDB at the moment of order creation. |
-| **Catalog Performance** | **`Promise.all` Parallelism** | Product fetching and total count queries run concurrently, cutting API latency in half. |
-| **Database Indexing** | **Compound & Text Indexes** | Compound indexes on `category` and `price`, plus text index on `name`, enable fast sub-millisecond filtering. |
-| **ACID Data Integrity** | **MongoDB Multi-Document Transactions** | Order creation, stock updates, cart clearing, payment marking, and cancellation stock-restore are all wrapped in `withTransaction()` sessions with `readConcern: snapshot` and `writeConcern: majority`. Prevents overselling, partial writes, and data loss on crash. |
+| **Atomicity** | Partial order writes causing stock loss without order confirmation | All checkout writes (order creation, stock decrements, and cart clearing) execute inside a **MongoDB Transaction Session** via `withTransaction()`. Any failure automatically rolls back all operations. |
+| **Consistency** | Negative inventory or overselling when multiple customers buy the last item | Stock is decremented using an atomic query with `{ stock: { $gte: qty } }`. Mongoose `pre("save")` hooks enforce `stock >= 0`. Invalid status transitions (e.g. un-cancelling an order) are rejected. |
+| **Isolation** | Dirty reads or concurrent checkout race conditions | Writes execute with `readConcern: "snapshot"` in MongoDB sessions. Each transaction operates on an isolated snapshot of database state. |
+| **Durability** | Data loss if the database crashes before persisting an order | Database connections enforce `writeConcern: { w: "majority", journal: true }`, ensuring writes are written to disk journals and replicated across the majority of replica set nodes before responding. |
 
 ---
 
-## 🧩 Layer 2 — Modules (Functional Breakdown)
-
-| Module | Backend Components | Frontend Components | Primary Dependency |
-|---|---|---|---|
-| **Authentication** | User model, `authController`, JWT utils, `authMiddleware` | `Login.jsx`, `Register.jsx`, `AuthContext.jsx`, `ProtectedRoute.jsx` | Foundational |
-| **Product Catalog** | Product model, Category model, `productController`, `categoryController` | `Products.jsx`, `ProductCard`, `ProductFilter`, `ProductGrid`, `Pagination` | Auth (for admin mutations) |
-| **Shopping Cart** | Cart model, `cartController`, `transaction.js` | `CartContext.jsx`, `Cart.jsx`, `CartItem.jsx`, `CartSummary.jsx` | Auth & Product |
-| **Checkout & Orders** | Order model, `orderController`, `transaction.js`, `calculateOrderTotals.js` | `Checkout.jsx`, `OrderHistory.jsx`, `OrderDetails.jsx` | Cart, Auth, Product |
-| **User Profile** | Address sub-document on User, `authController` (address CRUD) | `Profile.jsx` | Auth |
-| **Admin Panel** | `roleMiddleware("admin")`, CRUD handlers | `AdminRoute.jsx` | Auth (role=admin) |
-
----
-
-## 📡 API Endpoints Reference
+## 📡 REST API Reference
 
 ### 🔐 Authentication (`/api/auth`)
 | Method | Endpoint | Description | Access |
 |---|---|---|---|
-| `POST` | `/api/auth/register` | Register a new user account | Public |
-| `POST` | `/api/auth/login` | Authenticate user & issue HTTP-only JWT cookie | Public |
-| `GET` | `/api/auth/me` | Fetch currently logged-in user profile | Private (Logged-in User) |
-| `POST` | `/api/auth/logout` | Clear authentication cookie | Public |
-
-### 📍 Shipping Addresses (`/api/auth/addresses`)
-| Method | Endpoint | Description | Access |
-|---|---|---|---|
-| `GET` | `/api/auth/addresses` | Get all saved shipping addresses | Private (Logged-in User) |
-| `POST` | `/api/auth/addresses` | Add a new shipping address | Private (Logged-in User) |
-| `PUT` | `/api/auth/addresses/:addressId` | Update an existing address | Private (Logged-in User) |
-| `DELETE` | `/api/auth/addresses/:addressId` | Delete a shipping address | Private (Logged-in User) |
-| `PUT` | `/api/auth/addresses/:addressId/default` | Set an address as the default | Private (Logged-in User) |
+| `POST` | `/api/auth/register` | Register new user account | Public |
+| `POST` | `/api/auth/login` | Authenticate & set HTTP-only JWT cookie | Public |
+| `GET` | `/api/auth/me` | Fetch currently authenticated user session | Private (User) |
+| `POST` | `/api/auth/logout` | Clear session cookie | Public |
 
 ### 📦 Products (`/api/products`)
 | Method | Endpoint | Description | Access |
 |---|---|---|---|
-| `GET` | `/api/products` | Get products (search, category, price filter, sort, pagination) | Public |
-| `GET` | `/api/products/:id` | Get single product details by ID | Public |
-| `POST` | `/api/products` | Create a new product | Private (Admin only) |
-| `PUT` | `/api/products/:id` | Update product details | Private (Admin only) |
-| `DELETE` | `/api/products/:id` | Delete product by ID | Private (Admin only) |
+| `GET` | `/api/products` | Get products with search, filter, sort & pagination | Public |
+| `GET` | `/api/products/:id` | Get single product details | Public |
+| `POST` | `/api/products` | Create a new product | Private (Admin) |
+| `PUT` | `/api/products/:id` | Update product details | Private (Admin) |
+| `DELETE` | `/api/products/:id` | Delete product by ID | Private (Admin) |
 
 ### 🏷️ Categories (`/api/categories`)
 | Method | Endpoint | Description | Access |
 |---|---|---|---|
 | `GET` | `/api/categories` | Get all active categories | Public |
-| `GET` | `/api/categories/:id` | Get single category details | Public |
-| `POST` | `/api/categories` | Create new product category | Private (Admin only) |
-| `PUT` | `/api/categories/:id` | Update category name/description | Private (Admin only) |
-| `DELETE` | `/api/categories/:id` | Delete category by ID | Private (Admin only) |
+| `GET` | `/api/categories/:id` | Get category details | Public |
+| `POST` | `/api/categories` | Create new category | Private (Admin) |
+| `PUT` | `/api/categories/:id` | Update category | Private (Admin) |
+| `DELETE` | `/api/categories/:id` | Delete category | Private (Admin) |
 
 ### 🛒 Cart (`/api/cart`)
 | Method | Endpoint | Description | Access |
 |---|---|---|---|
-| `GET` | `/api/cart` | Get current user's database cart | Private (Logged-in User) |
-| `POST` | `/api/cart` | Add item to cart | Private (Logged-in User) |
-| `PUT` | `/api/cart/:productId` | Update cart item quantity | Private (Logged-in User) |
-| `DELETE` | `/api/cart/:productId` | Remove an item from cart | Private (Logged-in User) |
-| `DELETE` | `/api/cart` | Clear entire cart | Private (Logged-in User) |
-| `POST` | `/api/cart/merge` | Merge guest localStorage cart into database cart (⚛️ ACID transactional) | Private (Logged-in User) |
+| `GET` | `/api/cart` | Get current user cart from database | Private (User) |
+| `POST` | `/api/cart` | Add item to cart | Private (User) |
+| `PUT` | `/api/cart/:itemId` | Update cart item quantity | Private (User) |
+| `DELETE` | `/api/cart/:itemId` | Remove item from cart | Private (User) |
+| `POST` | `/api/cart/merge` | Merge guest localStorage cart into database | Private (User) |
 
-### 💳 Orders & Checkout (`/api/orders`)
+### 💳 Orders & Payments (`/api/orders` & `/api/payments`)
 | Method | Endpoint | Description | Access |
 |---|---|---|---|
-| `POST` | `/api/orders` | Verify stock, decrement inventory, create order & clear cart (⚛️ ACID transactional) | Private (Logged-in User) |
-| `GET` | `/api/orders/myorders` | Fetch logged-in user's order history | Private (Logged-in User) |
-| `GET` | `/api/orders/:id` | Get single order details | Private (Logged-in User / Admin) |
-| `PUT` | `/api/orders/:id/pay` | Mark order as paid & store gateway confirmation (⚛️ ACID transactional) | Private (Logged-in User / Admin) |
-| `GET` | `/api/orders` | Fetch all orders in system | Private (Admin only) |
-| `PUT` | `/api/orders/:id/status` | Update order status; restores stock on cancel (⚛️ ACID transactional) | Private (Admin only) |
+| `POST` | `/api/orders` | Create order with ACID transactional validation | Private (User) |
+| `GET` | `/api/orders/myorders` | Get logged-in user order history | Private (User) |
+| `GET` | `/api/orders/:id` | Get single order details | Private (User/Admin) |
+| `PUT` | `/api/orders/:id/cancel` | Cancel order & restore inventory atomically | Private (User/Admin) |
+| `PUT` | `/api/orders/:id/status` | Update shipping / delivery status | Private (Admin) |
+| `POST` | `/api/payments/create-intent` | Initialize Stripe Payment Intent | Private (User) |
+| `POST` | `/api/payments/webhook` | Stripe raw body event listener | Stripe Service |
 
 ---
 
-## 🔒 ACID Properties — Data Integrity Guarantees
+## 🖥️ Frontend Pages & Routing
 
-This project enforces all four **ACID** database properties to ensure no order, payment, or stock update can ever leave the database in a broken or inconsistent state.
+| Path | Component | Description | Route Guard |
+|---|---|---|---|
+| `/` | `Home.jsx` | Landing page with banner, featured categories & CTA | Public |
+| `/products` | `Products.jsx` | Storefront catalog with real-time filters & search | Public |
+| `/products/:id` | `ProductDetails.jsx` | Single product view with stock selector & images | Public |
+| `/cart` | `Cart.jsx` | Cart view with live quantity updates & free shipping meter | Public |
+| `/login` | `Login.jsx` | Sign-in page | Public |
+| `/register` | `Register.jsx` | Registration page | Public |
+| `/profile` | `Profile.jsx` | User profile & account details | `ProtectedRoute` |
+| `/checkout` | `Checkout.jsx` | Multi-step checkout with Stripe Card Elements | `ProtectedRoute` |
+| `/orders` | `OrderHistory.jsx` | Order history list with status tracking | `ProtectedRoute` |
+| `/orders/:id` | `OrderDetails.jsx` | Detailed order summary, invoice, and tracking | `ProtectedRoute` |
+| `/admin` | `AdminDashboard` | Administrator management control center | `AdminRoute` |
 
 ---
 
-### ⚛️ A — Atomicity
-> **"All or nothing."** Every multi-step operation either fully completes or fully rolls back. No partial writes ever persist.
+## ⚙️ Environment Variables
 
-**The problem it solves:** When a customer places an order, three things must happen together — the order is saved, the product stock is decremented, and the cart is cleared. If the server crashes between any of these steps, data would be corrupted (e.g., an order exists but stock was never deducted).
-
-**How it's implemented:**
-- **`orderController.js`** — `createOrder()` wraps all three writes (order save + stock decrement + cart clear) in a single **MongoDB transaction session**. If any step throws an error, the session calls `abortTransaction()` and every write is rolled back automatically.
-- **`cartController.js`** — `mergeGuestCart()` wraps the entire guest-cart merge loop in a transaction. Either all guest items are merged or none are.
-- **`utils/transaction.js`** — A reusable `withTransaction(callback)` helper manages the session lifecycle: start → commit on success → abort on failure → always close.
-
+### Backend Configuration (`backend/.env`)
+```env
+PORT=5000
+NODE_ENV=development
+MONGO_URI=mongodb+srv://<username>:<password>@cluster0.mongodb.net/ecommerce?retryWrites=true&w=majority
+JWT_SECRET=your_super_secret_jwt_key
+JWT_EXPIRES_IN=7d
+FRONTEND_URL=http://localhost:5173
+STRIPE_SECRET_KEY=sk_test_51...
+STRIPE_WEBHOOK_SECRET=whsec_...
 ```
-POST /api/orders → withTransaction()
-   ├─ Product stock --   (session write)
-   ├─ Order.create()     (session write)
-   └─ Cart.clear()       (session write)
-         ↓ all succeed → commitTransaction()
-         ↓ any fails   → abortTransaction() → zero changes in DB
+
+### Frontend Configuration (`frontend/.env` - Optional)
+```env
+VITE_API_BASE_URL=http://localhost:5000/api
+VITE_STRIPE_PUBLISHABLE_KEY=pk_test_51...
 ```
 
 ---
-
-### ✅ C — Consistency
-> **"Data always moves from one valid state to another."** Rules and constraints are enforced at every layer, making it impossible to store invalid data.
-
-**The problem it solves:** Without consistency checks, a race condition could oversell a product (two users both buy the last item), a user could pay for someone else's order, or stock could go negative.
-
-**How it's implemented:**
-
-| Constraint | Where |
-|---|---|
-| Stock cannot go negative | `models/Product.js` — `pre("save")` hook rejects any save where `stock < 0` |
-| No overselling under concurrent load | `orderController.js` — stock is decremented via `findOneAndUpdate({ stock: { $gte: qty } })`. If two requests race, only one matches the filter; the other gets `null` → transaction aborts |
-| Only the order owner (or admin) can pay | `orderController.js` — `updateOrderToPaid()` checks `order.user === req.user._id` |
-| COD orders cannot be paid online | `orderController.js` — `updateOrderToPaid()` rejects requests where `paymentMethod === "COD"` |
-| Cannot pay for a cancelled order | `orderController.js` — rejects if `orderStatus === "cancelled"` |
-| Cannot pay twice | `orderController.js` — rejects if `paymentStatus === "paid"` (idempotency guard) |
-| Cannot un-cancel an order | `orderController.js` — status transitions from `cancelled` to any other status are blocked |
-| Frontend price matches backend price | `Checkout.jsx` — shipping threshold (₹1000) and cost (₹100) are synced to match `calculateOrderTotals.js` exactly |
-| Payment has a gateway audit trail | `models/Order.js` — `paymentResult` sub-document stores `gatewayTransactionId`, `status`, `email` so the DB never holds `paymentStatus: "paid"` with no proof |
-
----
-
-### 🔀 I — Isolation
-> **"Concurrent operations don't interfere with each other."** Two users buying at the same time cannot see each other's partial writes.
-
-**The problem it solves:** Two customers simultaneously checking out the last item in stock could both see `stock = 1`, both pass the stock check, and both place an order — resulting in `stock = -1`.
-
-**How it's implemented:**
-- **MongoDB Sessions** — All writes inside `withTransaction()` are scoped to a session with `readConcern: "snapshot"`. This gives each transaction a consistent view of the data frozen at the moment the transaction started, preventing dirty reads.
-- **Atomic conditional update** — The stock decrement uses `$inc` with a filter `{ stock: { $gte: qty } }`. This is a single atomic MongoDB operation. Under concurrent load, only one transaction wins the filter — the other sees `null` and aborts cleanly.
-- **`addToCart`** — Re-reads the product stock immediately before updating the cart to get the latest committed value, closing the stale-read window.
-
----
-
-### 💾 D — Durability
-> **"Committed data survives crashes."** Once a transaction is confirmed, it is permanently written to disk even if the server restarts immediately after.
-
-**The problem it solves:** Without durability guarantees, an order could be confirmed to the user but lost if MongoDB crashes before flushing the write to disk.
-
-**How it's implemented:**
-- **`config/db.js`** — The MongoDB connection is opened with `writeConcern: { w: "majority", journal: true }`. This means MongoDB will not report a write as successful until:
-  - The write is acknowledged by the **majority** of replica set members (survives any single node failure), and
-  - The write is flushed to the on-disk **journal** (survives a process crash on the primary).
-- **`readPreference: "primary"`** — All reads go to the primary node, ensuring no stale data is ever served from a lagging secondary.
-- **Transaction-level write concern** — Each `withTransaction()` call also sets `writeConcern: { w: "majority" }` at the transaction level as an additional guarantee.
-
----
-
-### 🗂️ ACID Implementation — File Index
-
-| File | ACID Role |
-|---|---|
-| [`backend/utils/transaction.js`](backend/utils/transaction.js) | Core `withTransaction()` helper — Atomicity & Isolation engine |
-| [`backend/config/db.js`](backend/config/db.js) | `w: "majority"`, `journal: true` — Durability |
-| [`backend/models/Product.js`](backend/models/Product.js) | `pre("save")` stock ≥ 0 hook — Consistency |
-| [`backend/models/Order.js`](backend/models/Order.js) | `paymentResult` sub-schema — Consistency audit trail |
-| [`backend/controllers/orderController.js`](backend/controllers/orderController.js) | Atomic order creation, cancellation, payment — all four properties |
-| [`backend/controllers/cartController.js`](backend/controllers/cartController.js) | Transactional guest cart merge — Atomicity & Consistency |
-| [`backend/middleware/errorMiddleware.js`](backend/middleware/errorMiddleware.js) | Transaction error codes (112, 251) → 409 Conflict response |
-| [`frontend/src/pages/Checkout.jsx`](frontend/src/pages/Checkout.jsx) | Synced price constants, no duplicate cart-clear write — Consistency |
-| [`frontend/src/pages/OrderDetails.jsx`](frontend/src/pages/OrderDetails.jsx) | Passes `paymentResult` fields to backend — Consistency |
-
----
-
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-* Node.js (v18+)
-* MongoDB Atlas connection string
-* Git
+* **Node.js** (v18.0.0 or higher)
+* **npm** (v9.0.0 or higher)
+* **MongoDB Atlas** database cluster (or local replica set for transaction support)
+* **Stripe Developer Account** (for test API keys)
 
-### 1. Clone & Setup Backend
+### 1. Clone the Repository
+```bash
+git clone https://github.com/trupthi/e-commerce.git
+cd e-commerce
+```
+
+### 2. Backend Setup
 ```bash
 cd backend
 npm install
-# Create a .env file with:
-# PORT=5000
-# MONGO_URI=your_mongodb_connection_string
-# JWT_SECRET=your_secret_key
-# JWT_EXPIRES_IN=7d
-# NODE_ENV=development
-# FRONTEND_URL=http://localhost:5173
+
+# Copy environment variables template and configure your secrets
+# Ensure .env is populated with MONGO_URI, JWT_SECRET, and STRIPE keys
+
 npm run dev
+# Backend starts on http://localhost:5000
 ```
 
-### 2. Setup Frontend
+### 3. Frontend Setup
 ```bash
-cd frontend
+cd ../frontend
 npm install
+
 npm run dev
+# Frontend starts on http://localhost:5173
 ```
 
-Open `http://localhost:5173` in your browser to view the application!
+Open [http://localhost:5173](http://localhost:5173) in your browser to view the application.
+
+---
+
+## 🛡️ Security & Engineering Best Practices
+
+1. **XSS & CSRF Defense**: HTTP-only cookies prevent JavaScript access to auth tokens; CORS options restrict origin to authorized frontend domains with credential verification.
+2. **Server-Side Price Validation**: Never trusting prices passed from client payloads prevents price manipulation vulnerabilities.
+3. **Optimistic & Atomic Concurrency**: Database updates check for inventory availability in the same atomic operation as the mutation, eliminating race conditions.
+4. **Resilient Error Handling**: Centralized error middleware formats standardized JSON errors for validation issues, duplicate keys, and MongoDB conflict error codes (112, 251).
+5. **Clean Code Structure**: Clear separation of concerns between models, routes, controllers, middleware, and services.
+
+---
+
+## 📄 License
+
+This project is licensed under the [ISC License](LICENSE).

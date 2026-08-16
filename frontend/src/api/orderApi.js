@@ -36,8 +36,17 @@ export const updateOrderStatus = async (orderId, orderStatus) => {
   return response.data;
 };
 
+// Create Stripe Payment Intent
+export const createPaymentIntent = async (shippingAddress) => {
+  const response = await axiosInstance.post("/orders/payment-intent", {
+    shippingAddress,
+  });
+  return response.data;
+};
+
 const orderApi = {
   createOrder,
+  createPaymentIntent,
   getMyOrders,
   getOrderById,
   updateOrderToPaid,

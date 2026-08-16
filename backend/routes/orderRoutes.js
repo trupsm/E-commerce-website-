@@ -6,6 +6,7 @@ const {
   getAllOrders,
   updateOrderStatus,
   updateOrderToPaid,
+  createStripePaymentIntent,
 } = require("../controllers/orderController");
 const authMiddleware = require("../middleware/authMiddleware");
 const roleMiddleware = require("../middleware/roleMiddleware");
@@ -14,9 +15,11 @@ const router = express.Router();
 
 // Customer endpoints
 router.post("/", authMiddleware, createOrder);
+router.post("/payment-intent", authMiddleware, createStripePaymentIntent);
 router.get("/myorders", authMiddleware, getMyOrders);
 router.get("/:id", authMiddleware, getOrderById);
 router.put("/:id/pay", authMiddleware, updateOrderToPaid);
+
 
 // Admin-only endpoints
 router.get("/", authMiddleware, roleMiddleware("admin"), getAllOrders);

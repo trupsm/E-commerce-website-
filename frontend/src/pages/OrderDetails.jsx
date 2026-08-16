@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { getOrderById, updateOrderToPaid } from "../api/orderApi";
+import { getOrderById } from "../api/orderApi";
 import Loader from "../components/common/Loader";
 
 const PLACEHOLDER_IMAGE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%231e293b'/%3E%3Ctext x='50%25' y='50%25' fill='%2364748b' font-size='30' dominant-baseline='middle' text-anchor='middle'%3E🛍️%3C/text%3E%3C/svg%3E";
@@ -10,8 +10,6 @@ const OrderDetails = () => {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [paying, setPaying] = useState(false);
-  const [payError, setPayError] = useState("");
 
   const fetchOrder = async () => {
     try {
@@ -40,36 +38,6 @@ const OrderDetails = () => {
     }
   }, [id]);
 
-  const handlePayNow = async () => {
-    try {
-      setPaying(true);
-      setPayError("");
-      // ── Consistency (ACID): send paymentResult data matching the backend schema.
-      // gatewayTransactionId, status, email are stored in the Order's paymentResult
-      // sub-document as an audit trail. In a real integration, these come from
-      // the payment gateway SDK (Stripe.js / PayPal SDK) after the user pays.
-      // Here we send a stub confirming manual payment for demonstration.
-      const res = await updateOrderToPaid(id, {
-        gatewayTransactionId: `MANUAL-${Date.now()}`,
-        status: "COMPLETED",
-        email: "",
-        updatedAt: new Date().toISOString(),
-      });
-      if (res.success) {
-        await fetchOrder();
-      } else {
-        setPayError(res.message || "Failed to process payment. Please try again.");
-      }
-    } catch (err) {
-      setPayError(
-        err.response?.data?.message ||
-        err.message ||
-        "Failed to process payment. Please try again."
-      );
-    } finally {
-      setPaying(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -199,8 +167,6 @@ const OrderDetails = () => {
                 </span>
               </div>
 
-              <div style={{ width: "1px", height: "30px", background: "var(--border-color)" }} />
-
               {/* Payment Status */}
               <div style={{ textAlign: "center" }}>
                 <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.8px", fontWeight: "700", marginBottom: "4px" }}>
@@ -224,21 +190,8 @@ const OrderDetails = () => {
             </div>
           </div>
 
-          {/* Action Button if Payment Pending */}
-          {order.paymentStatus === "pending" && order.paymentMethod !== "COD" && !isCancelled && (
-            <div style={{ marginTop: "16px", paddingTop: "16px", borderTop: "1px solid var(--border-color)" }}>
-              {payError && (
-                <div className="alert alert-error" style={{ marginBottom: "12px", fontSize: "0.9rem" }}>
-                  ⚠️ {payError}
-                </div>
-              )}
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                <button onClick={handlePayNow} disabled={paying} className="btn btn-primary" style={{ padding: "12px 24px" }}>
-                  {paying ? "Processing..." : "Complete Payment Now 💳"}
-                </button>
-              </div>
-            </div>
-          )}
+
+
 
           {/* Progress / Timeline Steps */}
           {!isCancelled && (
