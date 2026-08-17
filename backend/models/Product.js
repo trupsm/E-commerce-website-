@@ -89,28 +89,23 @@ productSchema.index({
 // This acts as the last line of defence regardless of which code path
 // triggers the save (controller, admin tool, migration scripts, etc.).
 // ──────────────────────────────────────────────────────────────────────────
-productSchema.pre("save", function (next) {
+productSchema.pre("save", function () {
   if (this.stock < 0) {
-    return next(
-      new Error(
-        `Consistency violation: stock for product "${this.name}" cannot be negative (got ${this.stock})`
-      )
+    throw new Error(
+      `Consistency violation: stock for product "${this.name}" cannot be negative (got ${this.stock})`
     );
   }
-  next();
 });
 
 // Pre-findOneAndUpdate hook: also enforce stock >= 0 for atomic $inc updates.
-productSchema.pre("findOneAndUpdate", function (next) {
+productSchema.pre("findOneAndUpdate", function () {
   const update = this.getUpdate();
   // If someone passes a direct $set that would make stock negative, reject it.
   if (update && update.$set && typeof update.$set.stock === "number" && update.$set.stock < 0) {
-    return next(
-      new Error("Consistency violation: stock cannot be set to a negative value")
-    );
+    throw new Error("Consistency violation: stock cannot be set to a negative value");
   }
-  next();
 });
+
 
 const Product = mongoose.model("Product", productSchema);
 

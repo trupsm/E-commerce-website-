@@ -210,8 +210,14 @@ const orderSchema = new mongoose.Schema(
         paymentResult: {
             type: paymentResultSchema,
             default: null
+        },
+
+        stripePaymentIntentId: {
+            type: String,
+            default: null
         }
     },
+
     {
         timestamps: true
     }

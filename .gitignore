@@ -4,6 +4,8 @@ logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
 # Dependencies
 node_modules/
@@ -12,11 +14,12 @@ frontend/node_modules/
 
 # Build files
 dist/
+dist-ssr/
 build/
 .next/
 out/
 
-# Environment variables
+# Environment variables (Never commit secret .env files)
 .env
 .env.*
 *.env
@@ -30,4 +33,9 @@ out/
 .vscode/
 *.swp
 *.swo
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 .DS_Store

@@ -1,14 +1,77 @@
-# 🛒 Vyoma E-Commerce Platform — System Architecture & Implementation Blueprint
+# 🛒 Vyoma — Enterprise MERN E-Commerce Platform
 
 An enterprise-grade, high-performance **MERN Stack (MongoDB, Express, React, Node.js)** e-commerce web application featuring role-based access control, server-side pricing validation, hybrid cart synchronization, dynamic product catalogs, and transactional order, payment, and stock management.
 
 ---
 
-## 📁 Project Map (Folder Structure)
+## 📑 Table of Contents
+
+- [Key Highlights](#-key-highlights)
+- [System Architecture](#-system-architecture)
+- [Folder Structure](#-folder-structure)
+- [Core Features & Modules](#-core-features--modules)
+- [ACID Properties & Data Integrity](#-acid-properties--data-integrity)
+- [REST API Reference](#-rest-api-reference)
+- [Frontend Pages & Routing](#-frontend-pages--routing)
+- [Environment Variables](#-environment-variables)
+- [Getting Started](#-getting-started)
+- [Security & Engineering Best Practices](#-security--engineering-best-practices)
+
+---
+
+## ⚡ Key Highlights
+
+* **🔒 Enterprise-Grade Security**: Secure JWT authentication stored in `HTTP-Only SameSite` cookies, preventing XSS and CSRF token theft.
+* **🛡️ Strict ACID Compliance**: Multi-document MongoDB transactions for order placement, stock decrementing, and cart clearing.
+* **⚡ Concurrency & Race-Condition Safe**: Atomic conditional stock updates (`$gte: qty`) to eliminate overselling under heavy load.
+* **💳 Complete Stripe Payment Lifecycle**: Integrated Stripe Elements on client, Payment Intent lifecycle, and raw-body Webhook verification.
+* **🔄 Hybrid Cart Synchronization**: Smooth cart experience for guest users with automatic synchronization and merging into the database upon login.
+* **🔍 Optimized Product Discovery**: Full-text search, multi-criteria filtering (category, price range), sorting, and server-side pagination with compound indexes.
+* **🎨 Modern Glassmorphic UI**: Built with React 19, Vite, and custom CSS design system tailored for sleek dark-mode aesthetics and fluid micro-interactions.
+
+---
+
+## 🏛️ System Architecture
 
 ```
-ecommerce-platform/
-│
+                                  ┌──────────────────────────┐
+                                  │   Client (React 19 SPA)  │
+                                  │  Vite + React Router v7  │
+                                  │  Stripe React Elements   │
+                                  └────────────┬─────────────┘
+                                               │ HTTPS (JSON / REST API)
+                                               │ (Credentials: include)
+                                               ▼
+                                  ┌──────────────────────────┐
+                                  │  Express API (Node.js)   │
+                                  │  • Cookie Parser & CORS  │
+                                  │  • JWT Auth Middleware   │
+                                  │  • RBAC Access Control   │
+                                  │  • Central Error Handler │
+                                  └─────┬──────────────┬─────┘
+                                        │              │
+                    ┌───────────────────┴──┐        ┌──┴──────────────────┐
+                    ▼                      ▼        ▼                     ▼
+             ┌─────────────┐        ┌─────────────┐ ┌──────────┐   ┌──────────────┐
+             │ Auth & User │        │ Product/Cat │ │  Order   │   │    Stripe    │
+             │ Controller  │        │ Controller  │ │Controller│   │Payment Engine│
+             └──────┬──────┘        └──────┬──────┘ └────┬─────┘   └──────┬───────┘
+                    │                      │             │                │
+                    └──────────────────────┼─────────────┘                │
+                                           ▼                              ▼
+                                 ┌──────────────────┐             ┌───────────────┐
+                                 │  MongoDB Atlas   │             │ Stripe Webhook│
+                                 │  (Mongoose ODM)  │◄────────────┤  Verification │
+                                 │ Snapshot Session │             └───────────────┘
+                                 └──────────────────┘
+```
+
+---
+
+## 📁 Folder Structure
+
+```
+e-commerce/
 ├── backend/
 │   ├── config/
 │   │   ├── db.js                     # MongoDB connection setup
@@ -32,9 +95,25 @@ ecommerce-platform/
 │   │   ├── cartRoutes.js             # /api/cart
 │   │   └── orderRoutes.js            # /api/orders
 │   ├── middleware/
-│   │   ├── authMiddleware.js         # HTTP-only cookie + Bearer JWT verification
-│   │   ├── roleMiddleware.js         # Role-based access control (Admin vs Customer)
-│   │   └── errorMiddleware.js        # Central error handler (CastError, Duplicate, Transaction errors)
+│   │   ├── authMiddleware.js     # Cookie / Bearer token extraction & verification
+│   │   ├── errorMiddleware.js    # Centralized error handler (CastError, Duplicate, 409 Conflict)
+│   │   ├── roleMiddleware.js     # Role-based access control (Admin / Customer)
+│   │   └── uploadMiddleware.js   # Multipart form / Image upload handling
+│   ├── models/
+│   │   ├── Cart.js               # User cart schema with embedded items
+│   │   ├── Category.js           # Category taxonomy schema
+│   │   ├── Order.js              # Orders with item snapshot pricing & payment audit trail
+│   │   ├── Product.js            # Products with text indexing & stock invariant hooks
+│   │   └── User.js               # Users with bcrypt password hashing & RBAC roles
+│   ├── routes/
+│   │   ├── authRoutes.js         # /api/auth
+│   │   ├── cartRoutes.js         # /api/cart
+│   │   ├── categoryRoutes.js     # /api/categories
+│   │   ├── orderRoutes.js        # /api/orders
+│   │   ├── paymentRoutes.js      # /api/payments (Stripe webhooks & intents)
+│   │   └── productRoutes.js      # /api/products
+│   ├── services/
+│   │   └── paymentService.js     # Stripe API integration service
 │   ├── utils/
 │   │   ├── calculateOrderTotals.js   # Server-side subtotal, tax & shipping calculator
 │   │   ├── generateToken.js          # JWT token generator
@@ -46,45 +125,35 @@ ecommerce-platform/
 │   └── package.json
 │
 ├── frontend/
-│   ├── public/
-│   │   ├── favicon.svg               # Site favicon
-│   │   └── icons.svg                 # SVG icon sprite
 │   ├── src/
 │   │   ├── api/
-│   │   │   ├── axiosInstance.js       # Central Axios client with credentials: true
-│   │   │   ├── authApi.js            # Auth & address endpoints connector
-│   │   │   ├── cartApi.js            # Cart CRUD & merge API connector
-│   │   │   ├── orderApi.js           # Order creation, payment & status API connector
-│   │   │   └── productApi.js         # Products & categories API connector
+│   │   │   ├── axiosInstance.js  # Configured Axios instance with credentials
+│   │   │   ├── authApi.js        # Authentication API connector
+│   │   │   ├── cartApi.js        # Shopping cart API connector
+│   │   │   ├── orderApi.js       # Orders & payment endpoints
+│   │   │   └── productApi.js     # Catalog search & categories connector
 │   │   ├── components/
-│   │   │   ├── cart/
-│   │   │   │   ├── CartItem.jsx      # Single cart line-item component
-│   │   │   │   └── CartSummary.jsx   # Cart totals & checkout CTA
-│   │   │   ├── common/
-│   │   │   │   ├── Loader.jsx        # Reusable loading spinner
-│   │   │   │   ├── Navbar.jsx        # Top navigation bar with cart badge
-│   │   │   │   └── Pagination.jsx    # Page navigation controls
-│   │   │   └── product/
-│   │   │       ├── ProductCard.jsx   # Product tile with image, price & add-to-cart
-│   │   │       ├── ProductFilter.jsx # Sidebar filters (category, price, search)
-│   │   │       └── ProductGrid.jsx   # Responsive product grid layout
+│   │   │   ├── cart/             # Cart item rows, quantity selectors, summaries
+│   │   │   ├── common/           # Loaders, Modals, Navbar, Footer, Pagination
+│   │   │   ├── payment/          # Stripe Card Elements, Payment buttons
+│   │   │   └── product/          # ProductCard, ProductGrid, ProductFilters
 │   │   ├── context/
-│   │   │   ├── AuthContext.jsx       # Global session state & cookie restore on mount
-│   │   │   └── CartContext.jsx       # Cart state, guest/user sync & API bridge
+│   │   │   ├── AuthContext.jsx   # Global user session & cookie verification
+│   │   │   └── CartContext.jsx   # Global cart state & local/server sync engine
 │   │   ├── hooks/
-│   │   │   ├── useAuth.js            # Custom auth context hook
-│   │   │   └── useCart.js            # Custom cart context hook
+│   │   │   ├── useAuth.js        # Custom authentication hook
+│   │   │   └── useCart.js        # Custom shopping cart hook
 │   │   ├── pages/
-│   │   │   ├── Home.jsx              # Hero landing page with Start Shopping CTA
-│   │   │   ├── Products.jsx          # Full storefront catalog with search & filters
-│   │   │   ├── ProductDetails.jsx    # Single product view with stock selector
-│   │   │   ├── Cart.jsx              # Full cart page with item management
-│   │   │   ├── Checkout.jsx          # Address selection, payment method & order placement
-│   │   │   ├── OrderHistory.jsx      # User's past orders list
-│   │   │   ├── OrderDetails.jsx      # Single order view with pay button & status tracker
-│   │   │   ├── Profile.jsx           # User profile & shipping address management
-│   │   │   ├── Login.jsx             # User sign in
-│   │   │   └── Register.jsx          # User registration
+│   │   │   ├── Cart.jsx          # Shopping cart overview & quantity editor
+│   │   │   ├── Checkout.jsx      # Multi-step checkout with Stripe Elements
+│   │   │   ├── Home.jsx          # Hero storefront landing page
+│   │   │   ├── Login.jsx         # User authentication form
+│   │   │   ├── OrderDetails.jsx  # Order tracking, payment status & receipts
+│   │   │   ├── OrderHistory.jsx  # Historical purchases list
+│   │   │   ├── ProductDetails.jsx# Single product deep-dive with stock indicators
+│   │   │   ├── Products.jsx      # Filterable & searchable product catalog
+│   │   │   ├── Profile.jsx       # User account details & settings
+│   │   │   └── Register.jsx      # User registration form
 │   │   ├── routes/
 │   │   │   ├── ProtectedRoute.jsx    # Logged-in user route guard
 │   │   │   └── AdminRoute.jsx        # Admin-only role route guard
@@ -168,9 +237,11 @@ ecommerce-platform/
 
 ---
 
-### 3. Key Engineering Trade-Offs 
+## 🔒 ACID Properties & Data Integrity
 
-| Architectural Decision | Choice Made | Why? (The Engineering Rationale) |
+The backend is architected with strict adherence to the four **ACID** database properties:
+
+| Property | Problem Solved | Implementation Details |
 |---|---|---|
 | **JWT Storage** | **HTTP-Only Cookies** | Storing JWTs in `localStorage` exposes tokens to Cross-Site Scripting (XSS). HTTP-only cookies prevent JavaScript from accessing tokens. |
 | **Pricing Strategy** | **Server-Side Recomputation** | Never trust client-side prices. The backend looks up prices from MongoDB at the moment of order creation. |
@@ -180,55 +251,33 @@ ecommerce-platform/
 
 ---
 
-## 🧩 Layer 2 — Modules (Functional Breakdown)
-
-| Module | Backend Components | Frontend Components | Primary Dependency |
-|---|---|---|---|
-| **Authentication** | User model, `authController`, JWT utils, `authMiddleware` | `Login.jsx`, `Register.jsx`, `AuthContext.jsx`, `ProtectedRoute.jsx` | Foundational |
-| **Product Catalog** | Product model, Category model, `productController`, `categoryController` | `Products.jsx`, `ProductCard`, `ProductFilter`, `ProductGrid`, `Pagination` | Auth (for admin mutations) |
-| **Shopping Cart** | Cart model, `cartController`, `transaction.js` | `CartContext.jsx`, `Cart.jsx`, `CartItem.jsx`, `CartSummary.jsx` | Auth & Product |
-| **Checkout & Orders** | Order model, `orderController`, `transaction.js`, `calculateOrderTotals.js` | `Checkout.jsx`, `OrderHistory.jsx`, `OrderDetails.jsx` | Cart, Auth, Product |
-| **User Profile** | Address sub-document on User, `authController` (address CRUD) | `Profile.jsx` | Auth |
-| **Admin Panel** | `roleMiddleware("admin")`, CRUD handlers | `AdminRoute.jsx` | Auth (role=admin) |
-
----
-
-## 📡 API Endpoints Reference
+## 📡 REST API Reference
 
 ### 🔐 Authentication (`/api/auth`)
 | Method | Endpoint | Description | Access |
 |---|---|---|---|
-| `POST` | `/api/auth/register` | Register a new user account | Public |
-| `POST` | `/api/auth/login` | Authenticate user & issue HTTP-only JWT cookie | Public |
-| `GET` | `/api/auth/me` | Fetch currently logged-in user profile | Private (Logged-in User) |
-| `POST` | `/api/auth/logout` | Clear authentication cookie | Public |
-
-### 📍 Shipping Addresses (`/api/auth/addresses`)
-| Method | Endpoint | Description | Access |
-|---|---|---|---|
-| `GET` | `/api/auth/addresses` | Get all saved shipping addresses | Private (Logged-in User) |
-| `POST` | `/api/auth/addresses` | Add a new shipping address | Private (Logged-in User) |
-| `PUT` | `/api/auth/addresses/:addressId` | Update an existing address | Private (Logged-in User) |
-| `DELETE` | `/api/auth/addresses/:addressId` | Delete a shipping address | Private (Logged-in User) |
-| `PUT` | `/api/auth/addresses/:addressId/default` | Set an address as the default | Private (Logged-in User) |
+| `POST` | `/api/auth/register` | Register new user account | Public |
+| `POST` | `/api/auth/login` | Authenticate & set HTTP-only JWT cookie | Public |
+| `GET` | `/api/auth/me` | Fetch currently authenticated user session | Private (User) |
+| `POST` | `/api/auth/logout` | Clear session cookie | Public |
 
 ### 📦 Products (`/api/products`)
 | Method | Endpoint | Description | Access |
 |---|---|---|---|
-| `GET` | `/api/products` | Get products (search, category, price filter, sort, pagination) | Public |
-| `GET` | `/api/products/:id` | Get single product details by ID | Public |
-| `POST` | `/api/products` | Create a new product | Private (Admin only) |
-| `PUT` | `/api/products/:id` | Update product details | Private (Admin only) |
-| `DELETE` | `/api/products/:id` | Delete product by ID | Private (Admin only) |
+| `GET` | `/api/products` | Get products with search, filter, sort & pagination | Public |
+| `GET` | `/api/products/:id` | Get single product details | Public |
+| `POST` | `/api/products` | Create a new product | Private (Admin) |
+| `PUT` | `/api/products/:id` | Update product details | Private (Admin) |
+| `DELETE` | `/api/products/:id` | Delete product by ID | Private (Admin) |
 
 ### 🏷️ Categories (`/api/categories`)
 | Method | Endpoint | Description | Access |
 |---|---|---|---|
 | `GET` | `/api/categories` | Get all active categories | Public |
-| `GET` | `/api/categories/:id` | Get single category details | Public |
-| `POST` | `/api/categories` | Create new product category | Private (Admin only) |
-| `PUT` | `/api/categories/:id` | Update category name/description | Private (Admin only) |
-| `DELETE` | `/api/categories/:id` | Delete category by ID | Private (Admin only) |
+| `GET` | `/api/categories/:id` | Get category details | Public |
+| `POST` | `/api/categories` | Create new category | Private (Admin) |
+| `PUT` | `/api/categories/:id` | Update category | Private (Admin) |
+| `DELETE` | `/api/categories/:id` | Delete category | Private (Admin) |
 
 ### 🛒 Cart (`/api/cart`)
 | Method | Endpoint | Description | Access |
@@ -240,7 +289,7 @@ ecommerce-platform/
 | `DELETE` | `/api/cart` | Clear entire cart | Private (Logged-in User) |
 | `POST` | `/api/cart/merge` | Merge guest localStorage cart into database cart | Private (Logged-in User) |
 
-### 💳 Orders & Checkout (`/api/orders`)
+### 💳 Orders & Payments (`/api/orders` & `/api/payments`)
 | Method | Endpoint | Description | Access |
 |---|---|---|---|
 | `POST` | `/api/orders` | Verify stock, decrement inventory, create order & clear cart | Private (Logged-in User) |
@@ -256,11 +305,18 @@ ecommerce-platform/
 ## 🚀 Getting Started
 
 ### Prerequisites
-* Node.js (v18+)
-* MongoDB Atlas connection string
-* Git
+* **Node.js** (v18.0.0 or higher)
+* **npm** (v9.0.0 or higher)
+* **MongoDB Atlas** database cluster (or local replica set for transaction support)
+* **Stripe Developer Account** (for test API keys)
 
-### 1. Clone & Setup Backend
+### 1. Clone the Repository
+```bash
+git clone https://github.com/trupthi/e-commerce.git
+cd e-commerce
+```
+
+### 2. Backend Setup
 ```bash
 cd backend
 npm install
@@ -278,11 +334,12 @@ npm install
 # STRIPE_WEBHOOK_SECRET=your_stripe_webhook_secret
 
 npm run dev
+# Backend starts on http://localhost:5000
 ```
 
-### 2. Setup Frontend
+### 3. Frontend Setup
 ```bash
-cd frontend
+cd ../frontend
 npm install
 # Copy the example env file or create a .env file:
 # cp .env.example .env (or copy .env.example to .env)
@@ -292,6 +349,23 @@ npm install
 # VITE_API_URL=http://localhost:5000/api
 
 npm run dev
+# Frontend starts on http://localhost:5173
 ```
 
-Open `http://localhost:5173` in your browser to view the application!
+Open [http://localhost:5173](http://localhost:5173) in your browser to view the application.
+
+---
+
+## 🛡️ Security & Engineering Best Practices
+
+1. **XSS & CSRF Defense**: HTTP-only cookies prevent JavaScript access to auth tokens; CORS options restrict origin to authorized frontend domains with credential verification.
+2. **Server-Side Price Validation**: Never trusting prices passed from client payloads prevents price manipulation vulnerabilities.
+3. **Optimistic & Atomic Concurrency**: Database updates check for inventory availability in the same atomic operation as the mutation, eliminating race conditions.
+4. **Resilient Error Handling**: Centralized error middleware formats standardized JSON errors for validation issues, duplicate keys, and MongoDB conflict error codes (112, 251).
+5. **Clean Code Structure**: Clear separation of concerns between models, routes, controllers, middleware, and services.
+
+---
+
+## 📄 License
+
+This project is licensed under the [ISC License](LICENSE).
