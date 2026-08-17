@@ -355,17 +355,3 @@ npm run dev
 Open [http://localhost:5173](http://localhost:5173) in your browser to view the application.
 
 ---
-
-## 🛡️ Security & Engineering Best Practices
-
-1. **XSS & CSRF Defense**: HTTP-only cookies prevent JavaScript access to auth tokens; CORS options restrict origin to authorized frontend domains with credential verification.
-2. **Server-Side Price Validation**: Never trusting prices passed from client payloads prevents price manipulation vulnerabilities.
-3. **Optimistic & Atomic Concurrency**: Database updates check for inventory availability in the same atomic operation as the mutation, eliminating race conditions.
-4. **Resilient Error Handling**: Centralized error middleware formats standardized JSON errors for validation issues, duplicate keys, and MongoDB conflict error codes (112, 251).
-5. **Clean Code Structure**: Clear separation of concerns between models, routes, controllers, middleware, and services.
-
----
-
-## 📄 License
-
-This project is licensed under the [ISC License](LICENSE).
